@@ -65,7 +65,11 @@ export async function checkForUpdates(): Promise<void> {
 
     const spinner = ora('Updating caliber...').start();
     try {
-      execSync(`npm install -g @rely-ai/caliber@${latest} --prefer-online`, { stdio: 'pipe', timeout: 60_000 });
+      execSync(`npm install -g @rely-ai/caliber@${latest}`, {
+        stdio: 'pipe',
+        timeout: 120_000,
+        env: { ...process.env, npm_config_fund: 'false', npm_config_audit: 'false' },
+      });
 
       const installed = getInstalledVersion();
       if (installed !== latest) {
@@ -85,8 +89,11 @@ export async function checkForUpdates(): Promise<void> {
       process.exit(0);
     } catch (err) {
       spinner.fail('Update failed');
-      const msg = err instanceof Error ? err.message : '';
-      if (msg && !msg.includes('SIGTERM')) console.log(chalk.dim(`  ${msg.split('\n')[0]}`));
+      if (err instanceof Error) {
+        const stderr = (err as Record<string, unknown>).stderr;
+        const errMsg = stderr ? String(stderr).trim().split('\n').pop() : err.message.split('\n')[0];
+        if (errMsg && !errMsg.includes('SIGTERM')) console.log(chalk.dim(`  ${errMsg}`));
+      }
       console.log(
         chalk.yellow(
           `Run ${chalk.bold(`npm install -g @rely-ai/caliber@${latest}`)} manually to upgrade.\n`
