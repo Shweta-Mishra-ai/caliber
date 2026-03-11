@@ -71,12 +71,12 @@ SCORING CRITERIA — your output is scored deterministically. Optimize for 100/1
 
 Existence (25 pts):
 - CLAUDE.md exists (6 pts) — always generate
-- Skills configured (8 pts) — 2-3 focused skills is optimal
+- Skills configured (8 pts) — generate exactly 3 focused skills for full points (6 base + 1 per extra, cap 2). Two skills = 7 pts, three = 8 pts.
 - MCP servers mentioned (3 pts) — reference detected MCP integrations
 - For "both" target: .cursorrules/.cursor/rules/ exist (3+3 pts), cross-platform parity (2 pts)
 
 Quality (25 pts):
-- Build/test/lint commands documented (8 pts) — include actual npm/make/cargo commands
+- Build/test/lint commands documented (8 pts) — include actual commands from the project
 - Concise context files (6 pts) — keep CLAUDE.md under 100 lines for full points (200=4pts, 300=3pts, 500+=0pts)
 - No vague instructions (4 pts) — avoid "follow best practices", "write clean code", "ensure quality"
 - No directory tree listings (3 pts) — do NOT include tree-style file listings in code blocks
@@ -87,8 +87,12 @@ Coverage (20 pts):
 - Service/MCP coverage (6 pts) — reference detected services (DB, cloud, etc.)
 - MCP completeness (4 pts) — full points if no external services detected
 
-Accuracy (15 pts):
-- Documented commands exist (6 pts) — ONLY reference commands that actually exist in package.json scripts. Do NOT invent commands. Check the provided package.json scripts section carefully.
+Accuracy (15 pts) — THIS IS CRITICAL, READ CAREFULLY:
+- Documented commands exist (6 pts) — the scoring system validates EVERY command you write against the project's actual package.json scripts, Makefile targets, or Cargo.toml. If you write "yarn build" but there is no "build" script in package.json, you LOSE points. Rules:
+  * Look at the "scripts" section in the provided package.json. ONLY reference scripts that exist there.
+  * If a project uses Makefiles, only reference targets that exist in the Makefile.
+  * If there are no build/test scripts, do NOT invent them. Document what actually exists.
+  * Use the exact package manager the project uses (npm/yarn/pnpm/bun) — check the lockfile.
 - Documented paths exist (4 pts) — ONLY reference file paths from the provided file tree. Never guess paths.
 - Config freshness (5 pts) — config must match current code state
 
@@ -101,7 +105,7 @@ Bonus (5 pts):
 
 OUTPUT SIZE CONSTRAINTS — these are critical:
 - CLAUDE.md: MUST be under 100 lines for maximum score. Aim for 70-90 lines. Be extremely concise — only commands, architecture overview, and key conventions. Use bullet points and tables, not prose.
-- Skills: max 5 skills total (across claude + cursor). Only generate skills for the most important frameworks.
+- Skills: generate exactly 3 skills per target platform. Only go above 3 for large multi-framework projects.
 - Each skill content: max 150 lines. Focus on patterns and examples, not exhaustive docs.
 - Cursor rules: max 5 .mdc files.
 - If the project is large, prioritize depth on the 3-4 most critical tools over breadth across everything.`;

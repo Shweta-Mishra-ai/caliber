@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
+import { execSync } from 'child_process';
 import { join } from 'path';
 import type { Check } from '../index.js';
 import {
@@ -15,12 +16,24 @@ function readFileOrNull(path: string): string | null {
   }
 }
 
+function hasPreCommitHook(dir: string): boolean {
+  try {
+    const gitDir = execSync('git rev-parse --git-dir', { cwd: dir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const hookPath = join(gitDir, 'hooks', 'pre-commit');
+    const content = readFileOrNull(hookPath);
+    return content ? content.includes('caliber') : false;
+  } catch {
+    return false;
+  }
+}
+
 export function checkBonus(dir: string): Check[] {
   const checks: Check[] = [];
 
-  // 1. Hooks configured
-  let hasHooks = false;
-  let hookDetail = '';
+  // 1. Hooks configured (Claude Code hooks OR git pre-commit hook)
+  let hasClaudeHooks = false;
+  let hasPrecommit = false;
+  const hookSources: string[] = [];
 
   const settingsContent = readFileOrNull(join(dir, '.claude', 'settings.json'));
   if (settingsContent) {
@@ -28,17 +41,23 @@ export function checkBonus(dir: string): Check[] {
       const settings = JSON.parse(settingsContent) as Record<string, unknown>;
       const hooks = settings.hooks as Record<string, unknown> | undefined;
       if (hooks && Object.keys(hooks).length > 0) {
-        hasHooks = true;
-        hookDetail = `${Object.keys(hooks).length} hook${Object.keys(hooks).length === 1 ? '' : 's'}: ${Object.keys(hooks).join(', ')}`;
-      } else {
-        hookDetail = 'No hooks in settings.json';
+        hasClaudeHooks = true;
+        hookSources.push(`Claude Code: ${Object.keys(hooks).join(', ')}`);
       }
-    } catch {
-      hookDetail = 'settings.json is not valid JSON';
-    }
-  } else {
-    hookDetail = 'No .claude/settings.json';
+    } catch { /* invalid JSON */ }
   }
+
+  hasPrecommit = hasPreCommitHook(dir);
+  if (hasPrecommit) {
+    hookSources.push('git pre-commit');
+  }
+
+  const hasHooks = hasClaudeHooks || hasPrecommit;
+  const hookDetail = hasHooks
+    ? hookSources.join(', ')
+    : settingsContent
+      ? 'No hooks in settings.json'
+      : 'No hooks configured';
 
   checks.push({
     id: 'hooks_configured',
@@ -50,7 +69,7 @@ export function checkBonus(dir: string): Check[] {
     detail: hookDetail,
     suggestion: hasHooks
       ? undefined
-      : 'Add hooks (e.g., SessionEnd for auto-refresh) to .claude/settings.json',
+      : 'Run `caliber hooks install` or `caliber hooks install-precommit` for auto-refresh',
   });
 
   // 2. AGENTS.md exists
