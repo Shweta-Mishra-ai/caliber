@@ -35,15 +35,27 @@ function extractNpmDeps(dir: string): string[] {
     ...(pkg.devDependencies as Record<string, string> | undefined),
   };
 
-  // Filter out trivial/meta packages
+  // Filter out trivial/meta/tooling packages that don't need agent coverage
   const trivial = new Set([
     'typescript', '@types/node', 'tslib', 'ts-node', 'tsx',
     'prettier', 'eslint', '@eslint/js',
     'rimraf', 'cross-env', 'dotenv', 'nodemon',
+    'husky', 'lint-staged', 'commitlint',
+    '@commitlint/cli', '@commitlint/config-conventional',
   ]);
 
+  // Also exclude CLI tools / code quality tools that aren't project deps
+  const trivialPatterns = [
+    /^@rely-ai\//,
+    /^@caliber-ai\//,
+    /^eslint-/,
+    /^@eslint\//,
+    /^prettier-/,
+    /^@typescript-eslint\//,
+  ];
+
   return Object.keys(deps)
-    .filter(d => !trivial.has(d) && !d.startsWith('@types/'))
+    .filter(d => !trivial.has(d) && !d.startsWith('@types/') && !trivialPatterns.some(p => p.test(d)))
     .slice(0, 30);
 }
 

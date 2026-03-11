@@ -91,6 +91,7 @@ export async function initCommand(options: InitOptions) {
 
   // Baseline score before generation
   const baselineScore = computeLocalScore(process.cwd(), targetAgent);
+  console.log(chalk.hex('#6366f1').bold('  Current project score\n'));
   displayScore(baselineScore);
 
   const hasExistingConfig = !!(
