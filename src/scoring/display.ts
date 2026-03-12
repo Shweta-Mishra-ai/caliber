@@ -125,20 +125,16 @@ export function displayScoreSummary(result: ScoreResult): void {
     chalk.gray(`  ·  ${progressBar(result.score, result.maxScore, 20)}`)
   );
 
-  // Show top failing checks (max 4)
-  const failing = result.checks.filter(c => !c.passed && c.suggestion);
+  // Show failing check names (max 5)
+  const failing = result.checks.filter(c => !c.passed);
   if (failing.length > 0) {
-    const shown = failing.slice(0, 4);
+    const shown = failing.slice(0, 5);
     for (const check of shown) {
-      console.log(chalk.gray(`  ✗ ${check.name}`) + chalk.dim(` — ${check.suggestion!.slice(0, 60)}`));
+      console.log(chalk.gray(`  ✗ ${check.name}`));
     }
-    if (failing.length > shown.length) {
-      console.log(chalk.dim(`  … and ${failing.length - shown.length} more — run ${chalk.reset('caliber score')} for details`));
-    }
-  }
-
-  if (failing.length > 0) {
-    console.log(chalk.dim(`\n  Run ${chalk.reset('caliber score')} for the full breakdown.`));
+    const remaining = failing.length - shown.length;
+    const moreText = remaining > 0 ? ` (+${remaining} more)` : '';
+    console.log(chalk.dim(`\n  Run ${chalk.reset('caliber score')} for details.${moreText}`));
   }
   console.log('');
 }
