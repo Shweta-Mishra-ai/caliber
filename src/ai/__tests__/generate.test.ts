@@ -15,7 +15,7 @@ function makeFingerprint(overrides: Partial<Fingerprint> = {}): Fingerprint {
 
 describe('buildGeneratePrompt', () => {
   it('says "Generate initial" when no existing configs', () => {
-    const prompt = buildGeneratePrompt(makeFingerprint(), 'claude');
+    const prompt = buildGeneratePrompt(makeFingerprint(), ['claude']);
     expect(prompt).toContain('Generate an initial coding agent configuration');
     expect(prompt).toContain('target: claude');
   });
@@ -24,9 +24,9 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       existingConfigs: { claudeMd: '# My Project' },
     });
-    const prompt = buildGeneratePrompt(fp, 'both');
+    const prompt = buildGeneratePrompt(fp, ['claude', 'cursor']);
     expect(prompt).toContain('Audit and improve the existing');
-    expect(prompt).toContain('target: both');
+    expect(prompt).toContain('target: claude,cursor');
   });
 
   it('includes git remote, languages, frameworks', () => {
@@ -35,7 +35,7 @@ describe('buildGeneratePrompt', () => {
       languages: ['TypeScript', 'Python'],
       frameworks: ['Next.js', 'FastAPI'],
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('Git remote: https://github.com/test/repo');
     expect(prompt).toContain('Languages: TypeScript, Python');
     expect(prompt).toContain('Frameworks: Next.js, FastAPI');
@@ -46,7 +46,7 @@ describe('buildGeneratePrompt', () => {
       packageName: 'my-app',
       description: 'A cool app',
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('Package name: my-app');
     expect(prompt).toContain('Project description: A cool app');
   });
@@ -54,7 +54,7 @@ describe('buildGeneratePrompt', () => {
   it('truncates file tree to 200 entries', () => {
     const fileTree = Array.from({ length: 300 }, (_, i) => `src/file-${i}.ts`);
     const fp = makeFingerprint({ fileTree });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('200/300');
     expect(prompt).toContain('file-0.ts');
     expect(prompt).toContain('file-199.ts');
@@ -66,7 +66,7 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       existingConfigs: { claudeMd: longContent },
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('truncated at 8000 chars');
     expect(prompt).not.toContain('x'.repeat(10000));
   });
@@ -76,7 +76,7 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       existingConfigs: { readmeMd: longContent },
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('truncated at 8000 chars');
   });
 
@@ -88,7 +88,7 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       existingConfigs: { claudeSkills: skills },
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('skill-0.md');
     expect(prompt).toContain('skill-9.md');
     expect(prompt).not.toContain('skill-10.md');
@@ -104,7 +104,7 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       existingConfigs: { cursorRules: rules },
     });
-    const prompt = buildGeneratePrompt(fp, 'cursor');
+    const prompt = buildGeneratePrompt(fp, ['cursor']);
     expect(prompt).toContain('rule-9.mdc');
     expect(prompt).not.toContain('rule-10.mdc');
     expect(prompt).toContain('2 more rules omitted');
@@ -122,7 +122,7 @@ describe('buildGeneratePrompt', () => {
         truncated: false,
       },
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('config-0.json');
     expect(prompt).toContain('config-14.json');
     expect(prompt).not.toContain('config-15.json');
@@ -142,7 +142,7 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       codeAnalysis: { configFiles: [], fileSummaries, truncated: false },
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('route-0');
     expect(prompt).toContain('route-49');
     expect(prompt).not.toContain('route-50');
@@ -163,7 +163,7 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       codeAnalysis: { configFiles: [], fileSummaries, truncated: false },
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('file-0.ts');
     expect(prompt).toContain('file-59.ts');
     expect(prompt).not.toContain('file-60.ts');
@@ -174,7 +174,7 @@ describe('buildGeneratePrompt', () => {
   });
 
   it('includes user instructions', () => {
-    const prompt = buildGeneratePrompt(makeFingerprint(), 'claude', 'Focus on testing');
+    const prompt = buildGeneratePrompt(makeFingerprint(), ['claude'], 'Focus on testing');
     expect(prompt).toContain('User instructions: Focus on testing');
   });
 
@@ -182,7 +182,7 @@ describe('buildGeneratePrompt', () => {
     const fp = makeFingerprint({
       codeAnalysis: { configFiles: [], fileSummaries: [], truncated: true },
     });
-    const prompt = buildGeneratePrompt(fp, 'claude');
+    const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('Code analysis was truncated');
   });
 });

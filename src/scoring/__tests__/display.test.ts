@@ -47,7 +47,7 @@ function makeScoreResult(overrides: Partial<ScoreResult>): ScoreResult {
       freshness: { earned: 0, max: 10 },
       bonus: { earned: 0, max: 5 },
     },
-    targetAgent: 'claude',
+    targetAgent: ['claude'],
     timestamp: new Date().toISOString(),
     ...overrides,
   };
@@ -147,7 +147,7 @@ describe('displayScoreSummary', () => {
   });
 
   it('shows score, grade, and agent label', () => {
-    const result = makeScoreResult({ score: 66, grade: 'C', targetAgent: 'claude' });
+    const result = makeScoreResult({ score: 66, grade: 'C', targetAgent: ['claude'] });
     displayScoreSummary(result);
     const output = logs.join('\n');
     expect(output).toContain('66/100');
@@ -226,7 +226,7 @@ describe('displayScore', () => {
   });
 
   it('renders score header with grade', () => {
-    const result = makeScoreResult({ score: 85, grade: 'A', targetAgent: 'claude' });
+    const result = makeScoreResult({ score: 85, grade: 'A', targetAgent: ['claude'] });
 
     displayScore(result);
 
@@ -236,8 +236,8 @@ describe('displayScore', () => {
     expect(output).toContain('Claude Code');
   });
 
-  it('shows both agents label when targetAgent is both', () => {
-    const result = makeScoreResult({ score: 50, grade: 'C', targetAgent: 'both' });
+  it('shows both agents label when targetAgent is [claude, cursor]', () => {
+    const result = makeScoreResult({ score: 50, grade: 'C', targetAgent: ['claude', 'cursor'] });
 
     displayScore(result);
 
@@ -245,8 +245,8 @@ describe('displayScore', () => {
     expect(output).toContain('Claude Code + Cursor');
   });
 
-  it('shows Cursor label when targetAgent is cursor', () => {
-    const result = makeScoreResult({ score: 50, grade: 'C', targetAgent: 'cursor' });
+  it('shows Cursor label when targetAgent is [cursor]', () => {
+    const result = makeScoreResult({ score: 50, grade: 'C', targetAgent: ['cursor'] });
 
     displayScore(result);
 

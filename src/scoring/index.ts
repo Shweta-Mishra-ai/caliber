@@ -9,7 +9,7 @@ import { checkBonus } from './checks/bonus.js';
 import { computeGrade, CURSOR_ONLY_CHECKS, CLAUDE_ONLY_CHECKS, CODEX_ONLY_CHECKS, BOTH_ONLY_CHECKS } from './constants.js';
 import { getDismissedIds } from './dismissed.js';
 
-export type TargetAgent = 'claude' | 'cursor' | 'codex' | 'both';
+export type TargetAgent = ('claude' | 'cursor' | 'codex')[];
 export type CheckCategory = 'existence' | 'quality' | 'coverage' | 'accuracy' | 'freshness' | 'bonus';
 
 export interface Check {
@@ -55,29 +55,23 @@ function sumCategory(checks: readonly Check[], category: CheckCategory): Categor
 
 function filterChecksForTarget(checks: Check[], target: TargetAgent): Check[] {
   return checks.filter((c) => {
-    if (target === 'claude') {
-      return !CURSOR_ONLY_CHECKS.has(c.id) && !CODEX_ONLY_CHECKS.has(c.id) && !BOTH_ONLY_CHECKS.has(c.id);
-    }
-    if (target === 'cursor') {
-      return !CLAUDE_ONLY_CHECKS.has(c.id) && !CODEX_ONLY_CHECKS.has(c.id) && !BOTH_ONLY_CHECKS.has(c.id);
-    }
-    if (target === 'codex') {
-      return !CLAUDE_ONLY_CHECKS.has(c.id) && !CURSOR_ONLY_CHECKS.has(c.id) && !BOTH_ONLY_CHECKS.has(c.id);
-    }
-    return true; // 'both' — keep all checks
+    if (CLAUDE_ONLY_CHECKS.has(c.id)) return target.includes('claude');
+    if (CURSOR_ONLY_CHECKS.has(c.id)) return target.includes('cursor');
+    if (CODEX_ONLY_CHECKS.has(c.id)) return target.includes('codex');
+    if (BOTH_ONLY_CHECKS.has(c.id)) return target.includes('claude') && target.includes('cursor');
+    return true;
   });
 }
 
 /** Auto-detect target agent from existing config files on disk. */
 export function detectTargetAgent(dir: string): TargetAgent {
-  const hasClaude = existsSync(join(dir, 'CLAUDE.md')) || existsSync(join(dir, '.claude', 'skills'));
-  const hasCursor = existsSync(join(dir, '.cursorrules')) || existsSync(join(dir, '.cursor', 'rules'));
-  const hasCodex = existsSync(join(dir, '.codex')) || existsSync(join(dir, '.agents', 'skills'));
+  const agents: ('claude' | 'cursor' | 'codex')[] = [];
 
-  if (hasClaude && hasCursor) return 'both';
-  if (hasCodex && !hasClaude && !hasCursor) return 'codex';
-  if (hasCursor) return 'cursor';
-  return 'claude'; // default to claude
+  if (existsSync(join(dir, 'CLAUDE.md')) || existsSync(join(dir, '.claude', 'skills'))) agents.push('claude');
+  if (existsSync(join(dir, '.cursorrules')) || existsSync(join(dir, '.cursor', 'rules'))) agents.push('cursor');
+  if (existsSync(join(dir, '.codex')) || existsSync(join(dir, '.agents', 'skills'))) agents.push('codex');
+
+  return agents.length > 0 ? agents : ['claude'];
 }
 
 /**

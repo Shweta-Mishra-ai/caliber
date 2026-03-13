@@ -31,7 +31,7 @@ describe('generateSetup stream error handling', () => {
     const onError = vi.fn();
     const result = await generateSetup(
       { languages: [], frameworks: [], tools: [], fileTree: [], existingConfigs: {} },
-      'claude',
+      ['claude'],
       undefined,
       { onStatus: vi.fn(), onComplete: vi.fn(), onError }
     );
@@ -50,7 +50,7 @@ describe('generateSetup stream error handling', () => {
 
     const result = await generateSetup(
       { languages: [], frameworks: [], tools: [], fileTree: [], existingConfigs: {} },
-      'claude'
+      ['claude']
     );
 
     expect(result.setup).toEqual(setup);
@@ -65,7 +65,7 @@ describe('generateSetup stream error handling', () => {
 
     const result = await generateSetup(
       { languages: [], frameworks: [], tools: [], fileTree: [], existingConfigs: {} },
-      'claude'
+      ['claude']
     );
 
     expect(result.setup).toBeNull();
@@ -89,7 +89,7 @@ describe('generateSetup stream error handling', () => {
     const onStatus = vi.fn();
     const result = await generateSetup(
       { languages: [], frameworks: [], tools: [], fileTree: [], existingConfigs: {} },
-      'claude',
+      ['claude'],
       undefined,
       { onStatus, onComplete: vi.fn(), onError: vi.fn() }
     );

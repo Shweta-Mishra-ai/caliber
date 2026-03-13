@@ -2,7 +2,7 @@ import type { Fingerprint } from '../fingerprint/index.js';
 import { getProvider, TRANSIENT_ERRORS } from '../llm/index.js';
 import { GENERATION_SYSTEM_PROMPT } from './prompts.js';
 
-type TargetAgent = 'claude' | 'cursor' | 'codex' | 'both';
+type TargetAgent = ('claude' | 'cursor' | 'codex')[];
 
 interface GenerateCallbacks {
   onStatus: (message: string) => void;

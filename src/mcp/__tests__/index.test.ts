@@ -40,7 +40,7 @@ describe('discoverAndInstallMcps', () => {
   });
 
   it('returns zero installed when no tools detected', async () => {
-    const result = await discoverAndInstallMcps('claude', makeFingerprint(), tmpDir);
+    const result = await discoverAndInstallMcps(['claude'], makeFingerprint(), tmpDir);
     expect(result.installed).toBe(0);
     expect(result.names).toEqual([]);
   });
@@ -48,7 +48,7 @@ describe('discoverAndInstallMcps', () => {
   it('returns zero installed when no candidates found', async () => {
     vi.mocked(searchAllMcpSources).mockResolvedValue([]);
 
-    const result = await discoverAndInstallMcps('claude', makeFingerprint({ tools: ['Supabase'] }), tmpDir);
+    const result = await discoverAndInstallMcps(['claude'], makeFingerprint({ tools: ['Supabase'] }), tmpDir);
     expect(result.installed).toBe(0);
   });
 
@@ -67,7 +67,7 @@ describe('discoverAndInstallMcps', () => {
     }]);
     vi.mocked(validateAndScore).mockResolvedValue([]);
 
-    const result = await discoverAndInstallMcps('claude', makeFingerprint({ tools: ['Supabase'] }), tmpDir);
+    const result = await discoverAndInstallMcps(['claude'], makeFingerprint({ tools: ['Supabase'] }), tmpDir);
     expect(result.installed).toBe(0);
   });
 
@@ -79,7 +79,7 @@ describe('discoverAndInstallMcps', () => {
       },
     } as Partial<Fingerprint>);
 
-    const result = await discoverAndInstallMcps('claude', fingerprint, tmpDir);
+    const result = await discoverAndInstallMcps(['claude'], fingerprint, tmpDir);
     expect(result.installed).toBe(0);
   });
 });

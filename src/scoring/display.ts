@@ -1,6 +1,12 @@
 import chalk from 'chalk';
 import type { ScoreResult, Check, CheckCategory } from './index.js';
 
+const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  claude: 'Claude Code',
+  cursor: 'Cursor',
+  codex: 'Codex',
+};
+
 const CATEGORY_LABELS: Record<CheckCategory, string> = {
   existence: 'FILES & SETUP',
   quality: 'QUALITY',
@@ -61,13 +67,7 @@ function formatCheck(check: Check): string {
 export function displayScore(result: ScoreResult): void {
   const gc = gradeColor(result.grade);
 
-  const agentLabel = result.targetAgent === 'both'
-    ? 'Claude Code + Cursor'
-    : result.targetAgent === 'claude'
-      ? 'Claude Code'
-      : result.targetAgent === 'codex'
-        ? 'Codex'
-        : 'Cursor';
+  const agentLabel = result.targetAgent.map(a => AGENT_DISPLAY_NAMES[a] || a).join(' + ');
 
   // Header box
   console.log('');
@@ -111,13 +111,7 @@ export function displayScore(result: ScoreResult): void {
 export function displayScoreSummary(result: ScoreResult): void {
   const gc = gradeColor(result.grade);
 
-  const agentLabel = result.targetAgent === 'both'
-    ? 'Claude Code + Cursor'
-    : result.targetAgent === 'claude'
-      ? 'Claude Code'
-      : result.targetAgent === 'codex'
-        ? 'Codex'
-        : 'Cursor';
+  const agentLabel = result.targetAgent.map(a => AGENT_DISPLAY_NAMES[a] || a).join(' + ');
 
   // Compact header
   console.log('');

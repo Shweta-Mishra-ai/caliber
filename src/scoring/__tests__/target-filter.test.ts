@@ -15,41 +15,48 @@ describe('detectTargetAgent', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('returns claude when only CLAUDE.md exists', () => {
+  it('returns [claude] when only CLAUDE.md exists', () => {
     writeFileSync(join(dir, 'CLAUDE.md'), '# Config');
-    expect(detectTargetAgent(dir)).toBe('claude');
+    expect(detectTargetAgent(dir)).toEqual(['claude']);
   });
 
-  it('returns cursor when only .cursorrules exists', () => {
+  it('returns [cursor] when only .cursorrules exists', () => {
     writeFileSync(join(dir, '.cursorrules'), 'rules');
-    expect(detectTargetAgent(dir)).toBe('cursor');
+    expect(detectTargetAgent(dir)).toEqual(['cursor']);
   });
 
-  it('returns both when CLAUDE.md and .cursorrules exist', () => {
+  it('returns [claude, cursor] when CLAUDE.md and .cursorrules exist', () => {
     writeFileSync(join(dir, 'CLAUDE.md'), '# Config');
     writeFileSync(join(dir, '.cursorrules'), 'rules');
-    expect(detectTargetAgent(dir)).toBe('both');
+    expect(detectTargetAgent(dir)).toEqual(['claude', 'cursor']);
   });
 
-  it('returns both when .claude/skills and .cursor/rules exist', () => {
+  it('returns [claude, cursor] when .claude/skills and .cursor/rules exist', () => {
     mkdirSync(join(dir, '.claude', 'skills'), { recursive: true });
     mkdirSync(join(dir, '.cursor', 'rules'), { recursive: true });
-    expect(detectTargetAgent(dir)).toBe('both');
+    expect(detectTargetAgent(dir)).toEqual(['claude', 'cursor']);
   });
 
-  it('defaults to claude when no config files found', () => {
-    expect(detectTargetAgent(dir)).toBe('claude');
+  it('defaults to [claude] when no config files found', () => {
+    expect(detectTargetAgent(dir)).toEqual(['claude']);
   });
 
-  it('returns codex when only .codex exists', () => {
+  it('returns [codex] when only .codex exists', () => {
     mkdirSync(join(dir, '.codex'), { recursive: true });
-    expect(detectTargetAgent(dir)).toBe('codex');
+    expect(detectTargetAgent(dir)).toEqual(['codex']);
   });
 
-  it('returns claude over codex when CLAUDE.md exists', () => {
+  it('returns [claude, codex] when CLAUDE.md and .codex exist', () => {
     writeFileSync(join(dir, 'CLAUDE.md'), '# Config');
     mkdirSync(join(dir, '.codex'), { recursive: true });
-    expect(detectTargetAgent(dir)).toBe('claude');
+    expect(detectTargetAgent(dir)).toEqual(['claude', 'codex']);
+  });
+
+  it('returns all three when all config types exist', () => {
+    writeFileSync(join(dir, 'CLAUDE.md'), '# Config');
+    writeFileSync(join(dir, '.cursorrules'), 'rules');
+    mkdirSync(join(dir, '.codex'), { recursive: true });
+    expect(detectTargetAgent(dir)).toEqual(['claude', 'cursor', 'codex']);
   });
 });
 
@@ -64,8 +71,8 @@ describe('computeLocalScore target filtering', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('excludes cursor-only checks when target is claude', () => {
-    const result = computeLocalScore(dir, 'claude');
+  it('excludes cursor-only checks when target is [claude]', () => {
+    const result = computeLocalScore(dir, ['claude']);
     const checkIds = result.checks.map((c) => c.id);
 
     expect(checkIds).not.toContain('cursor_rules_exist');
@@ -74,8 +81,8 @@ describe('computeLocalScore target filtering', () => {
     expect(checkIds).not.toContain('no_duplicate_content');
   });
 
-  it('excludes claude-only checks when target is cursor', () => {
-    const result = computeLocalScore(dir, 'cursor');
+  it('excludes claude-only checks when target is [cursor]', () => {
+    const result = computeLocalScore(dir, ['cursor']);
     const checkIds = result.checks.map((c) => c.id);
 
     expect(checkIds).not.toContain('claude_md_exists');
@@ -84,8 +91,8 @@ describe('computeLocalScore target filtering', () => {
     expect(checkIds).not.toContain('no_duplicate_content');
   });
 
-  it('includes all checks when target is both', () => {
-    const result = computeLocalScore(dir, 'both');
+  it('includes all checks when target is [claude, cursor]', () => {
+    const result = computeLocalScore(dir, ['claude', 'cursor']);
     const checkIds = result.checks.map((c) => c.id);
 
     expect(checkIds).toContain('claude_md_exists');
@@ -94,7 +101,7 @@ describe('computeLocalScore target filtering', () => {
   });
 
   it('normalizes score to 0-100 range', () => {
-    const result = computeLocalScore(dir, 'claude');
+    const result = computeLocalScore(dir, ['claude']);
 
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
@@ -102,17 +109,17 @@ describe('computeLocalScore target filtering', () => {
   });
 
   it('includes targetAgent in result', () => {
-    const result = computeLocalScore(dir, 'cursor');
-    expect(result.targetAgent).toBe('cursor');
+    const result = computeLocalScore(dir, ['cursor']);
+    expect(result.targetAgent).toEqual(['cursor']);
   });
 
   it('includes grade in result', () => {
-    const result = computeLocalScore(dir, 'claude');
+    const result = computeLocalScore(dir, ['claude']);
     expect(['A', 'B', 'C', 'D', 'F']).toContain(result.grade);
   });
 
   it('includes category summaries', () => {
-    const result = computeLocalScore(dir, 'both');
+    const result = computeLocalScore(dir, ['claude', 'cursor']);
 
     expect(result.categories.existence).toBeDefined();
     expect(result.categories.quality).toBeDefined();
@@ -123,23 +130,23 @@ describe('computeLocalScore target filtering', () => {
   });
 
   it('scores higher when CLAUDE.md exists for claude target', () => {
-    const before = computeLocalScore(dir, 'claude');
+    const before = computeLocalScore(dir, ['claude']);
     writeFileSync(join(dir, 'CLAUDE.md'), '# Project\n\n## Commands\n\n```bash\nnpm run build\nnpm test\n```\n');
-    const after = computeLocalScore(dir, 'claude');
+    const after = computeLocalScore(dir, ['claude']);
 
     expect(after.score).toBeGreaterThan(before.score);
   });
 
   it('scores higher when .cursorrules exists for cursor target', () => {
-    const before = computeLocalScore(dir, 'cursor');
+    const before = computeLocalScore(dir, ['cursor']);
     writeFileSync(join(dir, '.cursorrules'), 'Use TypeScript strict mode.\nRun npm test before committing.\n');
-    const after = computeLocalScore(dir, 'cursor');
+    const after = computeLocalScore(dir, ['cursor']);
 
     expect(after.score).toBeGreaterThan(before.score);
   });
 
-  it('excludes claude and cursor checks when target is codex', () => {
-    const result = computeLocalScore(dir, 'codex');
+  it('excludes claude and cursor checks when target is [codex]', () => {
+    const result = computeLocalScore(dir, ['codex']);
     const checkIds = result.checks.map((c) => c.id);
 
     expect(checkIds).not.toContain('claude_md_exists');
@@ -151,8 +158,8 @@ describe('computeLocalScore target filtering', () => {
     expect(checkIds).toContain('codex_agents_md_exists');
   });
 
-  it('excludes codex checks when target is claude', () => {
-    const result = computeLocalScore(dir, 'claude');
+  it('excludes codex checks when target is [claude]', () => {
+    const result = computeLocalScore(dir, ['claude']);
     const checkIds = result.checks.map((c) => c.id);
 
     expect(checkIds).not.toContain('codex_agents_md_exists');
@@ -160,10 +167,20 @@ describe('computeLocalScore target filtering', () => {
   });
 
   it('scores higher when AGENTS.md exists for codex target', () => {
-    const before = computeLocalScore(dir, 'codex');
+    const before = computeLocalScore(dir, ['codex']);
     writeFileSync(join(dir, 'AGENTS.md'), '# Project\n\n## Commands\n\n```bash\nnpm run build\nnpm test\n```\n');
-    const after = computeLocalScore(dir, 'codex');
+    const after = computeLocalScore(dir, ['codex']);
 
     expect(after.score).toBeGreaterThan(before.score);
+  });
+
+  it('includes claude and codex checks when target is [claude, codex]', () => {
+    const result = computeLocalScore(dir, ['claude', 'codex']);
+    const checkIds = result.checks.map((c) => c.id);
+
+    expect(checkIds).toContain('claude_md_exists');
+    expect(checkIds).toContain('codex_agents_md_exists');
+    expect(checkIds).not.toContain('cursor_rules_exist');
+    expect(checkIds).not.toContain('cross_platform_parity');
   });
 });

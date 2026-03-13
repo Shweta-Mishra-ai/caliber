@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import readline from 'readline';
 import select from '@inquirer/select';
+import checkbox from '@inquirer/checkbox';
 import fs from 'fs';
 import { collectFingerprint, enrichFingerprintWithLLM } from '../fingerprint/index.js';
 import { generateSetup } from '../ai/generate.js';
@@ -27,7 +28,7 @@ import type { DismissedCheck } from '../scoring/dismissed.js';
 import { discoverAndInstallMcps } from '../mcp/index.js';
 import type { FailingCheck, PassingCheck } from '../ai/generate.js';
 
-type TargetAgent = 'claude' | 'cursor' | 'codex' | 'both';
+type TargetAgent = ('claude' | 'cursor' | 'codex')[];
 
 interface InitOptions {
   agent?: TargetAgent;
@@ -367,9 +368,7 @@ export async function initCommand(options: InitOptions) {
   console.log('');
   console.log(title.bold('  Keep your configs fresh\n'));
   console.log(chalk.dim('  Caliber can automatically update your agent configs when your code changes.\n'));
-  const hookChoice = targetAgent === 'codex'
-    ? await promptHookType('cursor') // codex uses pre-commit only (no agent-specific hooks)
-    : await promptHookType(targetAgent);
+  const hookChoice = await promptHookType(targetAgent);
 
   if (hookChoice === 'claude' || hookChoice === 'both') {
     const hookResult = installHook();
@@ -436,7 +435,7 @@ export async function initCommand(options: InitOptions) {
 
 async function refineLoop(
   currentSetup: Record<string, unknown>,
-  _targetAgent: string,
+  _targetAgent: TargetAgent,
   sessionHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
 ): Promise<Record<string, unknown> | null> {
   while (true) {
@@ -562,27 +561,32 @@ function promptInput(question: string): Promise<string> {
 }
 
 async function promptAgent(): Promise<TargetAgent> {
-  return select({
-    message: 'Which coding agent are you using?',
+  const selected = await checkbox({
+    message: 'Which coding agents do you use? (toggle with space)',
     choices: [
       { name: 'Claude Code', value: 'claude' as const },
       { name: 'Cursor', value: 'cursor' as const },
       { name: 'Codex (OpenAI)', value: 'codex' as const },
-      { name: 'Both (Claude + Cursor)', value: 'both' as const },
     ],
+    validate: (items) => {
+      if (items.length === 0) return 'At least one agent must be selected';
+      return true;
+    },
   });
+  return selected;
 }
 
 type HookChoice = 'claude' | 'precommit' | 'both' | 'skip';
 
 async function promptHookType(targetAgent: TargetAgent): Promise<HookChoice> {
   const choices: Array<{ name: string; value: HookChoice }> = [];
+  const hasClaude = targetAgent.includes('claude');
 
-  if (targetAgent === 'claude' || targetAgent === 'both') {
+  if (hasClaude) {
     choices.push({ name: 'Claude Code hook (auto-refresh on session end)', value: 'claude' });
   }
   choices.push({ name: 'Git pre-commit hook (refresh before each commit)', value: 'precommit' });
-  if (targetAgent === 'claude' || targetAgent === 'both') {
+  if (hasClaude) {
     choices.push({ name: 'Both (Claude Code + pre-commit)', value: 'both' });
   }
   choices.push({ name: 'Skip for now', value: 'skip' });

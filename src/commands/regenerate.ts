@@ -33,7 +33,7 @@ export async function regenerateCommand(options: { dryRun?: boolean }) {
   let generatedSetup: Record<string, unknown> | null = null;
 
   try {
-    const targetAgent = readState()?.targetAgent ?? 'both';
+    const targetAgent = readState()?.targetAgent ?? ['claude', 'cursor'];
     const result = await generateSetup(
       fingerprint,
       targetAgent,

@@ -40,7 +40,7 @@ Omit empty categories. Keep each reason punchy and specific. End with a blank li
 
 AgentSetup schema:
 {
-  "targetAgent": "claude" | "cursor" | "codex" | "both",
+  "targetAgent": ["claude", "cursor", "codex"] (array of selected agents),
   "fileDescriptions": {
     "<file-path>": "reason for this change (max 80 chars)"
   },
@@ -125,7 +125,7 @@ Apply the requested changes to the setup and return the complete updated AgentSe
 
 AgentSetup schema:
 {
-  "targetAgent": "claude" | "cursor" | "codex" | "both",
+  "targetAgent": ["claude", "cursor", "codex"] (array of selected agents),
   "fileDescriptions": {
     "<file-path>": "reason for this change (max 80 chars)"
   },

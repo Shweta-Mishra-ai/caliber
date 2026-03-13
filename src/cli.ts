@@ -33,11 +33,23 @@ program
   .description('Configure your coding agent environment')
   .version(displayVersion);
 
+function parseAgentOption(value: string): ('claude' | 'cursor' | 'codex')[] {
+  if (value === 'both') return ['claude', 'cursor'];
+  if (value === 'all') return ['claude', 'cursor', 'codex'];
+  const valid = ['claude', 'cursor', 'codex'];
+  const agents = [...new Set(value.split(',').map(s => s.trim().toLowerCase()).filter(a => valid.includes(a)))];
+  if (agents.length === 0) {
+    console.error(`Invalid agent "${value}". Choose from: claude, cursor, codex (comma-separated for multiple)`);
+    process.exit(1);
+  }
+  return agents as ('claude' | 'cursor' | 'codex')[];
+}
+
 program
   .command('onboard')
   .alias('init')
   .description('Onboard your project for AI-assisted development')
-  .option('--agent <type>', 'Target agent: claude, cursor, codex, or both')
+  .option('--agent <type>', 'Target agents (comma-separated): claude, cursor, codex', parseAgentOption)
   .option('--dry-run', 'Preview changes without writing files')
   .option('--force', 'Overwrite existing setup without prompting')
   .action(initCommand);
@@ -78,7 +90,7 @@ program
   .description('Score your current agent config setup (deterministic, no network)')
   .option('--json', 'Output as JSON')
   .option('--quiet', 'One-line output for scripts/hooks')
-  .option('--agent <type>', 'Target agent: claude, cursor, codex, or both')
+  .option('--agent <type>', 'Target agents (comma-separated): claude, cursor, codex', parseAgentOption)
   .action(scoreCommand);
 
 program

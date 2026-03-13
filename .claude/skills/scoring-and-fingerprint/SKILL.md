@@ -44,7 +44,7 @@ return checks;
 
 ### Target filtering
 
-Checks are filtered by target agent (`claude`, `cursor`, `both`) via `CURSOR_ONLY_CHECKS`, `CLAUDE_ONLY_CHECKS`, and `BOTH_ONLY_CHECKS` sets in `src/scoring/constants.ts`. Add new check IDs to the appropriate set if platform-specific.
+Checks are filtered by target agent (`claude`, `cursor`, `codex`) via `CURSOR_ONLY_CHECKS`, `CLAUDE_ONLY_CHECKS`, `BOTH_ONLY_CHECKS`, and `CODEX_ONLY_CHECKS` sets in `src/scoring/constants.ts`. Add new check IDs to the appropriate set if platform-specific.
 
 ### Displaying scores
 
@@ -57,7 +57,7 @@ Collects structured project context before sending to the LLM for config generat
 ### What gets collected
 
 | File | What it does |
-|------|--------------|
+|------|----------|
 | `git.ts` | `getGitRemoteUrl()`, `isGitRepo()` via `child_process.execSync` |
 | `languages.ts` | `detectLanguages()` from file extensions |
 | `package-json.ts` | `analyzePackageJson()` — Node + Python framework detection via `globSync` (`glob`) |
@@ -70,17 +70,18 @@ Collects structured project context before sending to the LLM for config generat
 
 ```typescript
 interface Fingerprint {
-  gitRemote?: string;
+  gitRemoteUrl?: string;
+  packageName?: string;
   languages: string[];
   frameworks: string[];
-  packages: PackageInfo[];
-  fileTree: string;
+  tools: string[];
+  fileTree: string[];
   existingConfigs: ExistingConfigs;
-  codeAnalysis: CodeAnalysis;
-  hash: string;  // for drift detection
+  codeAnalysis?: CodeAnalysis;
+  description?: string;
 }
 ```
 
-### Hash / drift detection
+### Drift detection
 
 `computeFingerprintHash()` in `src/fingerprint/index.ts` produces a SHA hash stored in `.caliber/state.json`. The `accuracy` scoring check compares this against the current fingerprint to detect stale configs.

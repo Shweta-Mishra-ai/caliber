@@ -12,7 +12,7 @@ import {
 } from './manifest.js';
 
 interface AgentSetup {
-  targetAgent: 'claude' | 'cursor' | 'codex' | 'both';
+  targetAgent: ('claude' | 'cursor' | 'codex')[];
   deletions?: Array<{ filePath: string; reason: string }>;
   claude?: Parameters<typeof writeClaudeConfig>[0];
   cursor?: Parameters<typeof writeCursorConfig>[0];
@@ -33,15 +33,15 @@ export function writeSetup(setup: AgentSetup): { written: string[]; deleted: str
 
   const written: string[] = [];
 
-  if ((setup.targetAgent === 'claude' || setup.targetAgent === 'both') && setup.claude) {
+  if (setup.targetAgent.includes('claude') && setup.claude) {
     written.push(...writeClaudeConfig(setup.claude));
   }
 
-  if ((setup.targetAgent === 'cursor' || setup.targetAgent === 'both') && setup.cursor) {
+  if (setup.targetAgent.includes('cursor') && setup.cursor) {
     written.push(...writeCursorConfig(setup.cursor));
   }
 
-  if (setup.targetAgent === 'codex' && setup.codex) {
+  if (setup.targetAgent.includes('codex') && setup.codex) {
     written.push(...writeCodexConfig(setup.codex));
   }
 
@@ -106,7 +106,7 @@ export function undoSetup(): { restored: string[]; removed: string[] } {
 function getFilesToWrite(setup: AgentSetup): string[] {
   const files: string[] = [];
 
-  if ((setup.targetAgent === 'claude' || setup.targetAgent === 'both') && setup.claude) {
+  if (setup.targetAgent.includes('claude') && setup.claude) {
     files.push('CLAUDE.md');
     if (setup.claude.mcpServers) files.push('.mcp.json');
     if (setup.claude.skills) {
@@ -116,7 +116,7 @@ function getFilesToWrite(setup: AgentSetup): string[] {
     }
   }
 
-  if ((setup.targetAgent === 'cursor' || setup.targetAgent === 'both') && setup.cursor) {
+  if (setup.targetAgent.includes('cursor') && setup.cursor) {
     if (setup.cursor.cursorrules) files.push('.cursorrules');
     if (setup.cursor.rules) {
       for (const r of setup.cursor.rules) files.push(`.cursor/rules/${r.filename}`);
@@ -127,7 +127,7 @@ function getFilesToWrite(setup: AgentSetup): string[] {
     if (setup.cursor.mcpServers) files.push('.cursor/mcp.json');
   }
 
-  if (setup.targetAgent === 'codex' && setup.codex) {
+  if (setup.targetAgent.includes('codex') && setup.codex) {
     files.push('AGENTS.md');
     if (setup.codex.skills) {
       for (const s of setup.codex.skills) files.push(`.agents/skills/${s.name}/SKILL.md`);

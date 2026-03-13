@@ -8,13 +8,24 @@ const STATE_FILE = path.join(CALIBER_DIR, '.caliber-state.json');
 interface CaliberState {
   lastRefreshSha: string;
   lastRefreshTimestamp: string;
-  targetAgent?: 'claude' | 'cursor' | 'codex' | 'both';
+  targetAgent?: ('claude' | 'cursor' | 'codex')[];
+}
+
+function normalizeTargetAgent(value: unknown): ('claude' | 'cursor' | 'codex')[] | undefined {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    if (value === 'both') return ['claude', 'cursor'];
+    if (['claude', 'cursor', 'codex'].includes(value)) return [value as 'claude' | 'cursor' | 'codex'];
+  }
+  return undefined;
 }
 
 export function readState(): CaliberState | null {
   try {
     if (!fs.existsSync(STATE_FILE)) return null;
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    const raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    if (raw.targetAgent) raw.targetAgent = normalizeTargetAgent(raw.targetAgent);
+    return raw;
   } catch {
     return null;
   }

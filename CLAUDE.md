@@ -2,17 +2,7 @@
 
 ## What Is This
 
-`@rely-ai/caliber` — CLI that fingerprints projects and generates AI agent configs (CLAUDE.md, .cursor/rules/, skills). Supports Anthropic (`@anthropic-ai/sdk`), OpenAI (`openai`), Google Vertex AI (`@anthropic-ai/vertex-sdk`, `google-auth-library`), and any OpenAI-compatible endpoint.
-
-## Monorepo Layout
-
-| Dir | Purpose |
-|-----|---------|
-| `src/` | Main CLI source (published package) |
-| `apps/api/` | Internal API server |
-| `apps/web/` | Internal web frontend |
-| `packages/mcp-server/` | MCP server package |
-| `packages/shared/` | Shared utilities |
+`@rely-ai/caliber` — CLI that fingerprints projects and generates AI agent configs (CLAUDE.md, .cursor/rules/, AGENTS.md, skills). Supports Anthropic (`@anthropic-ai/sdk`), OpenAI (`openai`), Google Vertex AI (`@anthropic-ai/vertex-sdk`, `google-auth-library`), any OpenAI-compatible endpoint, Claude Code CLI (no API key), and Cursor ACP (no API key).
 
 ## Commands
 
@@ -29,29 +19,33 @@ npx vitest run src/scoring/__tests__/accuracy.test.ts  # Single file
 
 **Entry**: `src/bin.ts` → `src/cli.ts` (Commander.js, all commands)
 
-**LLM** (`src/llm/`): `types.ts` interface · `config.ts` (env → `~/.caliber/config.json`, `DEFAULT_MODELS`) · `anthropic.ts` · `vertex.ts` · `openai-compat.ts` · `utils.ts` (`extractJson`, `estimateTokens`) · `index.ts` (`llmCall`, `llmJsonCall`, retry/backoff)
+**LLM** (`src/llm/`): `types.ts` interface · `config.ts` (env → `~/.caliber/config.json`, `DEFAULT_MODELS`) · `anthropic.ts` · `vertex.ts` · `openai-compat.ts` · `claude-cli.ts` (Claude Code CLI via `claude -p`) · `cursor-acp.ts` (Cursor Agent via JSON-RPC) · `utils.ts` (`extractJson`, `estimateTokens`) · `index.ts` (`llmCall`, `llmJsonCall`, retry/backoff)
 
 **AI** (`src/ai/`): `generate.ts` (streaming init) · `refine.ts` (chat refinement) · `refresh.ts` (diff-based updates) · `learn.ts` (session analysis) · `detect.ts` (LLM framework detection) · `prompts.ts` (all system prompts)
 
-**Commands** (`src/commands/`): `onboard` (alias `init`), `regenerate` (alias `update`/`regen`), `status`, `undo`, `config`, `recommend`, `score`, `refresh`, `hooks`, `learn`
+**Commands** (`src/commands/`): `onboard` (alias `init`), `regenerate` (alias `update`/`regen`/`re`), `status`, `undo`, `config`, `recommend`, `score`, `refresh`, `hooks`, `learn`
 
-**Fingerprint** (`src/fingerprint/`): `git.ts` · `languages.ts` · `package-json.ts` (uses `glob`/`globSync`) · `file-tree.ts` · `existing-config.ts` · `code-analysis.ts` · `index.ts` (orchestrates + `enrichFingerprintWithLLM`)
+**Fingerprint** (`src/fingerprint/`): `git.ts` · `languages.ts` · `package-json.ts` · `file-tree.ts` · `existing-config.ts` · `code-analysis.ts` · `index.ts` (orchestrates + `enrichFingerprintWithLLM`)
 
-**Writers** (`src/writers/`): `claude/` · `cursor/` · `staging.ts` (buffer before confirm) · `manifest.ts` (`.caliber/manifest.json`) · `backup.ts` (`.caliber/backups/`) · `refresh.ts`
+**Writers** (`src/writers/`): `claude/` · `cursor/` · `codex/` (AGENTS.md + `.agents/skills/`) · `staging.ts` (buffer before confirm) · `manifest.ts` (`.caliber/manifest.json`) · `backup.ts` (`.caliber/backups/`) · `refresh.ts`
+
+**MCP** (`src/mcp/`): `index.ts` (orchestration) · `search.ts` (MCP server discovery) · `validate.ts` (server validation) · `config-extract.ts` (extract config from servers) · `types.ts` · `prompts.ts`
 
 **Scoring** (`src/scoring/`): Deterministic, no LLM. Categories: existence · quality · coverage · accuracy · freshness · bonus. Constants in `scoring/constants.ts`. Run: `caliber score`.
 
 **Learner** (`src/learner/`): `storage.ts` (session events → `.caliber/learning/`) · `writer.ts` · `stdin.ts`. Finalize: `caliber learn finalize`.
 
-**Scanner** (`src/scanner/index.ts`): `detectPlatforms()` · `scanLocalState()` · `compareState()`
+**Scanner** (`src/scanner/index.ts`): `detectPlatforms()` (claude, cursor, codex) · `scanLocalState()` · `compareState()`
 
 ## LLM Provider Resolution
 
 1. `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-6`)
 2. `VERTEX_PROJECT_ID` / `GCP_PROJECT_ID` → Vertex (`us-east5`; ADC, `VERTEX_SA_CREDENTIALS`, or `GOOGLE_APPLICATION_CREDENTIALS`)
 3. `OPENAI_API_KEY` → OpenAI (`gpt-4.1`; `OPENAI_BASE_URL` for custom endpoints)
-4. `~/.caliber/config.json` — written by `caliber config`
-5. `CALIBER_MODEL` — overrides model for any provider
+4. `CALIBER_USE_CURSOR_SEAT=1` → Cursor ACP (no API key; uses Cursor Agent CLI)
+5. `CALIBER_USE_CLAUDE_CLI=1` → Claude Code CLI (no API key; uses `claude -p`)
+6. `~/.caliber/config.json` — written by `caliber config`
+7. `CALIBER_MODEL` — overrides model for any provider
 
 ## Testing
 

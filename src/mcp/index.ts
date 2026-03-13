@@ -9,7 +9,7 @@ import { fetchReadme, extractMcpConfig } from './config-extract.js';
 import type { Fingerprint } from '../fingerprint/index.js';
 import type { McpCandidate, McpServerConfig, McpDiscoveryResult } from './types.js';
 
-type TargetAgent = 'claude' | 'cursor' | 'codex' | 'both';
+type TargetAgent = ('claude' | 'cursor' | 'codex')[];
 
 /**
  * Main orchestrator: discover and install MCP servers during init.
@@ -121,17 +121,13 @@ export async function discoverAndInstallMcps(
   }
 
   // Step 8: Write MCP configs directly (merge with existing)
-  if (targetAgent === 'claude' || targetAgent === 'both') {
+  if (targetAgent.includes('claude') || targetAgent.includes('codex')) {
     writeMcpJson(path.join(dir, '.mcp.json'), mcpServers);
   }
-  if (targetAgent === 'cursor' || targetAgent === 'both') {
+  if (targetAgent.includes('cursor')) {
     const cursorDir = path.join(dir, '.cursor');
     if (!fs.existsSync(cursorDir)) fs.mkdirSync(cursorDir, { recursive: true });
     writeMcpJson(path.join(cursorDir, 'mcp.json'), mcpServers);
-  }
-  if (targetAgent === 'codex') {
-    // Codex uses .mcp.json at project root (same as Claude)
-    writeMcpJson(path.join(dir, '.mcp.json'), mcpServers);
   }
 
   return { installed: installedNames.length, names: installedNames };
@@ -153,13 +149,13 @@ function writeMcpJson(filePath: string, mcpServers: Record<string, McpServerConf
 function getExistingMcpNames(fingerprint: Fingerprint, targetAgent: TargetAgent): string[] {
   const names: string[] = [];
 
-  if (targetAgent === 'claude' || targetAgent === 'both') {
+  if (targetAgent.includes('claude')) {
     if (fingerprint.existingConfigs.claudeMcpServers) {
       names.push(...Object.keys(fingerprint.existingConfigs.claudeMcpServers).map(k => k.toLowerCase()));
     }
   }
 
-  if (targetAgent === 'cursor' || targetAgent === 'both') {
+  if (targetAgent.includes('cursor')) {
     if (fingerprint.existingConfigs.cursorMcpServers) {
       names.push(...Object.keys(fingerprint.existingConfigs.cursorMcpServers).map(k => k.toLowerCase()));
     }
