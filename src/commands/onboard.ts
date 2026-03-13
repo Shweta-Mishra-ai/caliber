@@ -372,7 +372,7 @@ export async function initCommand(options: InitOptions) {
     const hookResult = installHook();
     if (hookResult.installed) {
       console.log(`  ${chalk.green('✓')} Claude Code hook installed — docs update on session end`);
-      console.log(chalk.dim('    Run ') + chalk.hex('#83D1EB')('caliber hooks remove') + chalk.dim(' to disable'));
+      console.log(chalk.dim('    Run ') + chalk.hex('#83D1EB')('caliber hooks --remove') + chalk.dim(' to disable'));
     } else if (hookResult.alreadyInstalled) {
       console.log(chalk.dim('  Claude Code hook already installed'));
     }
@@ -390,7 +390,7 @@ export async function initCommand(options: InitOptions) {
     const precommitResult = installPreCommitHook();
     if (precommitResult.installed) {
       console.log(`  ${chalk.green('✓')} Pre-commit hook installed — docs refresh before each commit`);
-      console.log(chalk.dim('    Run ') + chalk.hex('#83D1EB')('caliber hooks remove-precommit') + chalk.dim(' to disable'));
+      console.log(chalk.dim('    Run ') + chalk.hex('#83D1EB')('caliber hooks --remove') + chalk.dim(' to disable'));
     } else if (precommitResult.alreadyInstalled) {
       console.log(chalk.dim('  Pre-commit hook already installed'));
     } else {
@@ -399,7 +399,7 @@ export async function initCommand(options: InitOptions) {
   }
 
   if (hookChoice === 'skip') {
-    console.log(chalk.dim('  Skipped auto-refresh hooks. Run ') + chalk.hex('#83D1EB')('caliber hooks install') + chalk.dim(' later to enable.'));
+    console.log(chalk.dim('  Skipped auto-refresh hooks. Run ') + chalk.hex('#83D1EB')('caliber hooks --install') + chalk.dim(' later to enable.'));
   }
 
   // Show score improvement

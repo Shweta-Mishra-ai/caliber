@@ -69,7 +69,7 @@ export function checkBonus(dir: string): Check[] {
     detail: hookDetail,
     suggestion: hasHooks
       ? undefined
-      : 'Run `caliber hooks install` or `caliber hooks install-precommit` for auto-refresh',
+      : 'Run `caliber hooks --install` for auto-refresh',
   });
 
   // 2. AGENTS.md exists
