@@ -1,10 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { resolveCaliber, isCaliberCommand } from './resolve-caliber.js';
 
 const SETTINGS_PATH = path.join('.claude', 'settings.json');
-const HOOK_COMMAND = 'caliber refresh --quiet';
+const REFRESH_TAIL = 'refresh --quiet';
 const HOOK_DESCRIPTION = 'Caliber: auto-refreshing docs based on code changes';
+
+function getHookCommand(): string {
+  return `${resolveCaliber()} ${REFRESH_TAIL}`;
+}
 
 interface HookEntry {
   type: string;
@@ -42,7 +47,7 @@ function writeSettings(settings: ClaudeSettings): void {
 
 function findHookIndex(sessionEnd: HookMatcher[]): number {
   return sessionEnd.findIndex(entry =>
-    entry.hooks?.some(h => h.command === HOOK_COMMAND)
+    entry.hooks?.some(h => isCaliberCommand(h.command, REFRESH_TAIL))
   );
 }
 
@@ -65,7 +70,7 @@ export function installHook(): { installed: boolean; alreadyInstalled: boolean }
 
   settings.hooks.SessionEnd.push({
     matcher: '',
-    hooks: [{ type: 'command', command: HOOK_COMMAND, description: HOOK_DESCRIPTION }],
+    hooks: [{ type: 'command', command: getHookCommand(), description: HOOK_DESCRIPTION }],
   });
 
   writeSettings(settings);
@@ -102,13 +107,16 @@ export function removeHook(): { removed: boolean; notFound: boolean } {
 const PRECOMMIT_START = '# caliber:pre-commit:start';
 const PRECOMMIT_END = '# caliber:pre-commit:end';
 
-const PRECOMMIT_BLOCK = `${PRECOMMIT_START}
-if command -v caliber >/dev/null 2>&1; then
+function getPrecommitBlock(): string {
+  const bin = resolveCaliber();
+  return `${PRECOMMIT_START}
+if [ -x "${bin}" ] || command -v "${bin}" >/dev/null 2>&1; then
   echo "\\033[2mcaliber: refreshing docs...\\033[0m"
-  caliber refresh 2>/dev/null || true
+  "${bin}" refresh 2>/dev/null || true
   git diff --name-only -- CLAUDE.md .claude/ .cursor/ AGENTS.md 2>/dev/null | xargs git add 2>/dev/null || true
 fi
 ${PRECOMMIT_END}`;
+}
 
 function getGitHooksDir(): string | null {
   try {
@@ -146,9 +154,9 @@ export function installPreCommitHook(): { installed: boolean; alreadyInstalled: 
   if (fs.existsSync(hookPath)) {
     content = fs.readFileSync(hookPath, 'utf-8');
     if (!content.endsWith('\n')) content += '\n';
-    content += '\n' + PRECOMMIT_BLOCK + '\n';
+    content += '\n' + getPrecommitBlock() + '\n';
   } else {
-    content = '#!/bin/sh\n\n' + PRECOMMIT_BLOCK + '\n';
+    content = '#!/bin/sh\n\n' + getPrecommitBlock() + '\n';
   }
 
   fs.writeFileSync(hookPath, content);
