@@ -31,4 +31,5 @@ export interface LLMStreamOptions extends LLMCallOptions {
 export interface LLMProvider {
   call(options: LLMCallOptions): Promise<string>;
   stream(options: LLMStreamOptions, callbacks: LLMStreamCallbacks): Promise<void>;
+  listModels?(): Promise<string[]>;
 }

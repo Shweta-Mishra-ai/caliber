@@ -22,6 +22,15 @@ export class AnthropicProvider implements LLMProvider {
     return block.type === 'text' ? block.text : '';
   }
 
+  async listModels(): Promise<string[]> {
+    const models: string[] = [];
+    const page = await this.client.models.list({ limit: 100 });
+    for (const model of page.data) {
+      models.push(model.id);
+    }
+    return models;
+  }
+
   async stream(options: LLMStreamOptions, callbacks: LLMStreamCallbacks): Promise<void> {
     const messages = options.messages
       ? [

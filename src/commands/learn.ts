@@ -19,6 +19,7 @@ import {
 import { readExistingConfigs } from '../fingerprint/existing-config.js';
 import { analyzeEvents } from '../ai/learn.js';
 import { loadConfig } from '../llm/config.js';
+import { validateModel } from '../llm/index.js';
 
 export async function learnObserveCommand(options: { failure?: boolean }) {
   try {
@@ -64,6 +65,9 @@ export async function learnFinalizeCommand() {
       resetState();
       return;
     }
+
+    // Verify configured model is reachable before LLM analysis
+    await validateModel();
 
     const existingConfigs = readExistingConfigs(process.cwd());
     const existingLearnedSection = readLearnedSection();

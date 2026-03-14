@@ -6,11 +6,13 @@ import { OpenAICompatProvider } from './openai-compat.js';
 import { CursorAcpProvider, isCursorAgentAvailable } from './cursor-acp.js';
 import { ClaudeCliProvider, isClaudeCliAvailable } from './claude-cli.js';
 import { parseJsonResponse, extractJson, estimateTokens } from './utils.js';
+import { isModelNotAvailableError, handleModelNotAvailable } from './model-recovery.js';
 
 export type { LLMProvider, LLMConfig, LLMCallOptions };
 export type { LLMStreamOptions, LLMStreamCallbacks, ProviderType } from './types.js';
 export { loadConfig, writeConfigFile, getConfigFilePath, getFastModel } from './config.js';
 export { parseJsonResponse, extractJson, estimateTokens };
+export { isModelNotAvailableError, handleModelNotAvailable } from './model-recovery.js';
 
 let cachedProvider: LLMProvider | null = null;
 let cachedConfig: LLMConfig | null = null;
@@ -100,6 +102,18 @@ export async function llmCall(options: LLMCallOptions): Promise<string> {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
+      // Model not available — prompt the user to pick an alternative
+      if (isModelNotAvailableError(error) && cachedConfig) {
+        const failedModel = options.model || cachedConfig.model;
+        const newModel = await handleModelNotAvailable(failedModel, provider, cachedConfig);
+        if (newModel) {
+          resetProvider();
+          const newProvider = getProvider();
+          return await newProvider.call({ ...options, model: newModel });
+        }
+        throw error;
+      }
+
       if (isOverloaded(error) && attempt < MAX_RETRIES) {
         await new Promise(r => setTimeout(r, 2000));
         continue;
@@ -120,4 +134,48 @@ export async function llmCall(options: LLMCallOptions): Promise<string> {
 export async function llmJsonCall<T>(options: LLMCallOptions): Promise<T> {
   const text = await llmCall(options);
   return parseJsonResponse<T>(text);
+}
+
+/**
+ * Lightweight model probe — sends a minimal request to verify the configured
+ * model (and optionally the fast model) is reachable. If the model is not
+ * available, triggers the interactive recovery flow so the user can pick an
+ * alternative *before* the real workload starts (especially streaming calls
+ * where mid-flight recovery is harder).
+ *
+ * Call this early in any command that uses streaming or long-running LLM work.
+ */
+export async function validateModel(options?: { fast?: boolean }): Promise<void> {
+  const provider = getProvider();
+  const config = cachedConfig;
+  if (!config) return;
+
+  const modelsToCheck = [config.model];
+  if (options?.fast) {
+    const { getFastModel } = await import('./config.js');
+    const fast = getFastModel();
+    if (fast && fast !== config.model) modelsToCheck.push(fast);
+  }
+
+  for (const model of modelsToCheck) {
+    try {
+      await provider.call({
+        system: 'Respond with OK',
+        prompt: 'ping',
+        model,
+        maxTokens: 1,
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (isModelNotAvailableError(error)) {
+        const newModel = await handleModelNotAvailable(model, provider, config);
+        if (newModel) {
+          resetProvider();
+          return; // provider cache is reset; subsequent calls will use the new model
+        }
+        throw error;
+      }
+      // Non-model errors (network, auth) — don't block startup, let the real call handle it
+    }
+  }
 }

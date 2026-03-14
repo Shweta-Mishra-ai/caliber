@@ -26,6 +26,14 @@ export class OpenAICompatProvider implements LLMProvider {
     return response.choices[0]?.message?.content || '';
   }
 
+  async listModels(): Promise<string[]> {
+    const models: string[] = [];
+    for await (const model of this.client.models.list()) {
+      models.push(model.id);
+    }
+    return models;
+  }
+
   async stream(options: LLMStreamOptions, callbacks: LLMStreamCallbacks): Promise<void> {
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: options.system },

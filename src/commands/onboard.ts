@@ -16,7 +16,7 @@ import { installLearningHooks } from '../lib/learning-hooks.js';
 import { writeState, getCurrentHeadSha } from '../lib/state.js';
 import { SpinnerMessages, GENERATION_MESSAGES, REFINE_MESSAGES } from '../utils/spinner-messages.js';
 import { loadConfig, getFastModel } from '../llm/config.js';
-import { llmJsonCall } from '../llm/index.js';
+import { llmJsonCall, validateModel } from '../llm/index.js';
 import { runInteractiveProviderSetup } from './interactive-provider-setup.js';
 import { computeLocalScore } from '../scoring/index.js';
 import type { Check } from '../scoring/index.js';
@@ -87,6 +87,9 @@ export async function initCommand(options: InitOptions) {
     ? `  Provider: ${config.provider} | Model: ${displayModel} | Scan: ${fastModel}`
     : `  Provider: ${config.provider} | Model: ${displayModel}`;
   console.log(chalk.dim(modelLine + '\n'));
+
+  // Verify configured model is reachable before starting heavy work
+  await validateModel({ fast: true });
 
   // Step 2: Discover project
   console.log(title.bold('  Step 2/6 — Discover your project\n'));

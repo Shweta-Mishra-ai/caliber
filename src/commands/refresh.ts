@@ -10,6 +10,7 @@ import { writeRefreshDocs } from '../writers/refresh.js';
 import { collectFingerprint } from '../fingerprint/index.js';
 import { refreshDocs } from '../ai/refresh.js';
 import { loadConfig } from '../llm/config.js';
+import { validateModel } from '../llm/index.js';
 
 interface RefreshOptions {
   quiet?: boolean;
@@ -122,6 +123,9 @@ export async function refreshCommand(options: RefreshOptions) {
       console.log(chalk.red('No LLM provider configured. Run ') + chalk.hex('#83D1EB')('caliber config') + chalk.red(' (e.g. choose Cursor) or set an API key.'));
       throw new Error('__exit__');
     }
+
+    // Verify configured model is reachable before starting heavy work
+    await validateModel({ fast: true });
 
     if (isGitRepo()) {
       await refreshSingleRepo(process.cwd(), options);

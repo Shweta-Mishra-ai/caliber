@@ -8,6 +8,7 @@ import { stageFiles, cleanupStaging } from '../writers/staging.js';
 import { promptWantsReview, promptReviewMethod, openReview } from '../utils/review.js';
 import { readManifest } from '../writers/manifest.js';
 import { loadConfig } from '../llm/config.js';
+import { validateModel } from '../llm/index.js';
 import { readState, writeState, getCurrentHeadSha } from '../lib/state.js';
 import { computeLocalScore } from '../scoring/index.js';
 import { displayScoreSummary, displayScoreDelta } from '../scoring/display.js';
@@ -28,6 +29,9 @@ export async function regenerateCommand(options: { dryRun?: boolean }) {
   }
 
   const targetAgent = readState()?.targetAgent ?? ['claude', 'cursor'];
+
+  // Verify configured model is reachable before starting heavy work
+  await validateModel({ fast: true });
 
   // 1. Fingerprint
   const spinner = ora('Analyzing project...').start();
