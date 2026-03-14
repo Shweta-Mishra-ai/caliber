@@ -10,7 +10,7 @@ Caliber uses Vitest with a globally mocked LLM provider — no real API calls in
 
 ```bash
 npm run test                                           # all tests
-npm run test -- --coverage                             # with v8 coverage
+npm run test:coverage                                  # with v8 coverage
 npx vitest run src/scoring/__tests__/accuracy.test.ts  # single file
 npx vitest run src/llm/__tests__/                      # entire directory
 ```
@@ -74,3 +74,4 @@ vi.mock('child_process', () => ({ execSync: vi.fn().mockReturnValue('https://git
 
 ### Learner (`src/learner/`)
 Use temp directories (`os.tmpdir()`) for event storage tests.
+Use `memfs` for filesystem mocking when needed.

@@ -12,7 +12,7 @@ The `caliber score` command runs a fully deterministic quality audit — no LLM,
 
 See `src/scoring/constants.ts`. Categories:
 - **Existence** (25 pts) — CLAUDE.md, cursor rules, skills, MCP servers, cross-platform parity
-- **Quality** (25 pts) — build/test commands documented, CLAUDE.md under 100 lines, no vague instructions, no directory tree listings, no contradictions
+- **Quality** (25 pts) — build/test commands documented, CLAUDE.md under 120 lines, no vague instructions, no directory tree listings, no contradictions
 - **Coverage** (20 pts) — actual dependencies named, services/MCP referenced
 - **Accuracy** (15 pts) — documented commands exist in package.json, documented paths exist on disk, config freshness
 - **Freshness & Safety** (10 pts) — no secrets, permissions configured
@@ -59,29 +59,11 @@ Collects structured project context before sending to the LLM for config generat
 | File | What it does |
 |------|----------|
 | `git.ts` | `getGitRemoteUrl()`, `isGitRepo()` via `child_process.execSync` |
-| `languages.ts` | `detectLanguages()` from file extensions |
-| `package-json.ts` | `analyzePackageJson()` — Node + Python framework detection via `globSync` (`glob`) |
 | `file-tree.ts` | `getFileTree()` — directory snapshot |
 | `existing-config.ts` | `readExistingConfigs()` — reads CLAUDE.md, .cursorrules, .cursor/rules/, skills |
 | `code-analysis.ts` | `analyzeCode()` — file summaries, API routes, config files |
 | `index.ts` | Orchestrates all above, LLM enrichment is automatic |
 
-### `Fingerprint` type (key fields)
+### Key design rule
 
-```typescript
-interface Fingerprint {
-  gitRemoteUrl?: string;
-  packageName?: string;
-  languages: string[];
-  frameworks: string[];
-  tools: string[];
-  fileTree: string[];
-  existingConfigs: ExistingConfigs;
-  codeAnalysis?: CodeAnalysis;
-  description?: string;
-}
-```
-
-### Drift detection
-
-`computeFingerprintHash()` in `src/fingerprint/index.ts` produces a SHA hash stored in `.caliber/state.json`. The `accuracy` scoring check compares this against the current fingerprint to detect stale configs.
+All detection is 100% LLM-driven. There are NO hardcoded mappings of file extensions to languages or filenames to tools. `collectFingerprint()` is async and always includes LLM enrichment internally — there is no separate enrichment step.

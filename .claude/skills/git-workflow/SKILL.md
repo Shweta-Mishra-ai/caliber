@@ -34,7 +34,7 @@ git add src/commands/score.ts src/scoring/index.ts
 git commit -m "feat(scoring): add dependency coverage check"
 ```
 
-Include `Co-Authored-By: Claude <noreply@anthropic.com>` when Claude assisted.
+Do NOT include Co-Authored-By headers in commits.
 
 ## Before Pushing
 

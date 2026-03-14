@@ -7,11 +7,12 @@
 ## Commands
 
 ```bash
-npm run build                    # Compile via tsup → dist/
-npm run dev                      # Watch mode (tsup --watch)
-npm run test                     # Run Vitest suite
-npm run test -- --coverage       # v8 coverage report
-npx tsc --noEmit                 # Type-check only
+npm run build          # Compile via tsup → dist/
+npm run dev            # Watch mode (tsup --watch)
+npm run test           # Run Vitest suite
+npm run test:watch     # Vitest in watch mode
+npm run test:coverage  # v8 coverage report
+npx tsc --noEmit       # Type-check only
 npx vitest run src/scoring/__tests__/accuracy.test.ts  # Single file
 ```
 
@@ -19,7 +20,7 @@ npx vitest run src/scoring/__tests__/accuracy.test.ts  # Single file
 
 **Entry**: `src/bin.ts` → `src/cli.ts` (Commander.js, all commands)
 
-**LLM** (`src/llm/`): `types.ts` interface · `config.ts` (env → `~/.caliber/config.json`, `DEFAULT_MODELS`) · `anthropic.ts` · `vertex.ts` · `openai-compat.ts` · `claude-cli.ts` (Claude Code CLI via `claude -p`) · `cursor-acp.ts` (Cursor Agent via JSON-RPC) · `utils.ts` (`extractJson`, `estimateTokens`) · `index.ts` (`llmCall`, `llmJsonCall`, retry/backoff)
+**LLM** (`src/llm/`): `types.ts` interface · `config.ts` (env → `~/.caliber/config.json`, `DEFAULT_MODELS`, `DEFAULT_FAST_MODELS`) · `anthropic.ts` · `vertex.ts` · `openai-compat.ts` · `claude-cli.ts` (Claude Code CLI via `claude -p`) · `cursor-acp.ts` (Cursor Agent via JSON-RPC) · `utils.ts` (`extractJson`, `estimateTokens`) · `index.ts` (`llmCall`, `llmJsonCall`, retry/backoff)
 
 **AI** (`src/ai/`): `generate.ts` (streaming init) · `refine.ts` (chat refinement) · `refresh.ts` (diff-based updates) · `learn.ts` (session analysis) · `detect.ts` (LLM framework detection) · `prompts.ts` (all system prompts)
 
@@ -37,6 +38,8 @@ npx vitest run src/scoring/__tests__/accuracy.test.ts  # Single file
 
 **Scanner** (`src/scanner/index.ts`): `detectPlatforms()` (claude, cursor, codex) · `scanLocalState()` · `compareState()`
 
+**Packages**: `packages/mcp-server/` (MCP server) · `packages/shared/` (shared utils) · `apps/` (web + API — separate from CLI)
+
 ## LLM Provider Resolution
 
 1. `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-6`)
@@ -46,6 +49,10 @@ npx vitest run src/scoring/__tests__/accuracy.test.ts  # Single file
 5. `CALIBER_USE_CLAUDE_CLI=1` → Claude Code CLI (no API key; uses `claude -p`)
 6. `~/.caliber/config.json` — written by `caliber config`
 7. `CALIBER_MODEL` — overrides model for any provider
+
+## Two-Tier Model System
+
+Lightweight tasks (classification, scoring, extraction) auto-use a cheaper/faster model; heavy tasks (generation, refinement) use the default model. `getFastModel()` resolves via: `CALIBER_FAST_MODEL` env → `ANTHROPIC_SMALL_FAST_MODEL` env → config file `fastModel` field → `DEFAULT_FAST_MODELS[provider]`. Auto-defaults: Anthropic/Vertex → `claude-haiku-4-5-20251001`, OpenAI → `gpt-4.1-mini`. Cursor and Claude CLI have no fast default (falls back to default model). Callers spread `...(fastModel ? { model: fastModel } : {})` into LLM call options.
 
 ## Testing
 
@@ -62,12 +69,13 @@ npx vitest run src/scoring/__tests__/accuracy.test.ts  # Single file
 - `throw new Error('__exit__')` — clean CLI exit, no stack trace
 - Use `ora` spinners with `.fail()` before rethrowing async errors
 - Transient LLM errors auto-retry in `llmCall()` via `TRANSIENT_ERRORS`
-- Key deps: `commander`, `chalk`, `ora`, `@inquirer/confirm`, `@inquirer/select`, `glob`, `tsup`
+- Key deps: `commander`, `chalk`, `ora`, `diff`, `glob`, `tsup`, `@inquirer/confirm`, `@inquirer/select`, `@inquirer/checkbox`
 
 ## Commit Convention
 
 `feat:` → minor · `fix:`/`refactor:`/`chore:` → patch · `feat!:` → major
 Scope optional: `feat(scanner): detect Cursor config`
+Do NOT include Co-Authored-By headers in commits.
 
 ## Permissions
 

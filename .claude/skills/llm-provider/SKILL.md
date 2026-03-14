@@ -82,22 +82,8 @@ The `cursor` and `claude-cli` providers require no API key — they use the user
 ```typescript
 import { extractJson, stripMarkdownFences, parseJsonResponse, estimateTokens } from '../llm/utils.js';
 
-// Strips ```json fences and parses
-const obj = parseJsonResponse<MyType>(rawLlmOutput);
-
-// Bracket-balancing extractor (handles leading/trailing prose)
-const json = extractJson(rawLlmOutput);
-
-// Token estimation before sending
-const tokens = estimateTokens(prompt);
+// extractJson: bracket-balancing extraction from prose
+// stripMarkdownFences: remove ```json ... ``` wrappers
+// parseJsonResponse: full pipeline (strip → extract → JSON.parse)
+// estimateTokens: rough char/4 token count
 ```
-
-## Config Resolution Order
-
-1. `ANTHROPIC_API_KEY` → `AnthropicProvider` (`@anthropic-ai/sdk`, default: `claude-sonnet-4-6`)
-2. `VERTEX_PROJECT_ID` / `GCP_PROJECT_ID` → `VertexProvider` (`@anthropic-ai/vertex-sdk`, `google-auth-library`, default region: `us-east5`)
-3. `OPENAI_API_KEY` → `OpenAICompatProvider` (`openai`, default: `gpt-4.1`; `OPENAI_BASE_URL` for custom endpoints)
-4. `CALIBER_USE_CURSOR_SEAT=1` → `CursorAcpProvider` (Cursor Agent CLI, no API key)
-5. `CALIBER_USE_CLAUDE_CLI=1` → `ClaudeCliProvider` (Claude Code CLI, no API key)
-6. `~/.caliber/config.json` — written by `caliber config`
-7. `CALIBER_MODEL` — overrides model name for any provider
