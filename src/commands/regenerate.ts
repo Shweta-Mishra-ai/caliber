@@ -5,6 +5,7 @@ import { collectFingerprint, enrichFingerprintWithLLM } from '../fingerprint/ind
 import { generateSetup } from '../ai/generate.js';
 import { writeSetup, undoSetup } from '../writers/index.js';
 import { stageFiles, cleanupStaging } from '../writers/staging.js';
+import { promptWantsReview, promptReviewMethod, openReview } from '../utils/review.js';
 import { readManifest } from '../writers/manifest.js';
 import { loadConfig } from '../llm/config.js';
 import { readState, writeState, getCurrentHeadSha } from '../lib/state.js';
@@ -37,6 +38,11 @@ export async function regenerateCommand(options: { dryRun?: boolean }) {
   // 2. Baseline score
   const baselineScore = computeLocalScore(process.cwd(), targetAgent);
   displayScoreSummary(baselineScore);
+
+  if (baselineScore.score === 100) {
+    console.log(chalk.green('  Your setup is already at 100/100 — nothing to regenerate.\n'));
+    return;
+  }
 
   // 3. Generate
   const genSpinner = ora('Regenerating setup...').start();
@@ -97,6 +103,12 @@ export async function regenerateCommand(options: { dryRun?: boolean }) {
     }
     cleanupStaging();
     return;
+  }
+
+  const wantsReview = await promptWantsReview();
+  if (wantsReview) {
+    const reviewMethod = await promptReviewMethod();
+    await openReview(reviewMethod, staged.stagedFiles);
   }
 
   const action = await select({
