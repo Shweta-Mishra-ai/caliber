@@ -4,7 +4,7 @@ import readline from 'readline';
 import select from '@inquirer/select';
 import checkbox from '@inquirer/checkbox';
 import fs from 'fs';
-import { collectFingerprint, enrichFingerprintWithLLM } from '../fingerprint/index.js';
+import { collectFingerprint } from '../fingerprint/index.js';
 import { generateSetup } from '../ai/generate.js';
 import { refineSetup } from '../ai/refine.js';
 import { writeSetup, undoSetup } from '../writers/index.js';
@@ -93,8 +93,7 @@ export async function initCommand(options: InitOptions) {
   console.log(title.bold('  Step 2/6 — Discover your project\n'));
   console.log(chalk.dim('  Learning about your languages, dependencies, structure, and existing configs.\n'));
   const spinner = ora('Analyzing project...').start();
-  const fingerprint = collectFingerprint(process.cwd());
-  await enrichFingerprintWithLLM(fingerprint, process.cwd());
+  const fingerprint = await collectFingerprint(process.cwd());
   spinner.succeed('Project analyzed');
 
   console.log(chalk.dim(`  Languages: ${fingerprint.languages.join(', ') || 'none detected'}`));

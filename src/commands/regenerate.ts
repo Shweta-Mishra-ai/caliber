@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import select from '@inquirer/select';
-import { collectFingerprint, enrichFingerprintWithLLM } from '../fingerprint/index.js';
+import { collectFingerprint } from '../fingerprint/index.js';
 import { generateSetup } from '../ai/generate.js';
 import { writeSetup, undoSetup } from '../writers/index.js';
 import { stageFiles, cleanupStaging } from '../writers/staging.js';
@@ -31,8 +31,7 @@ export async function regenerateCommand(options: { dryRun?: boolean }) {
 
   // 1. Fingerprint
   const spinner = ora('Analyzing project...').start();
-  const fingerprint = collectFingerprint(process.cwd());
-  await enrichFingerprintWithLLM(fingerprint, process.cwd());
+  const fingerprint = await collectFingerprint(process.cwd());
   spinner.succeed('Project analyzed');
 
   // 2. Baseline score

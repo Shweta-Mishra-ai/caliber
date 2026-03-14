@@ -64,7 +64,7 @@ Collects structured project context before sending to the LLM for config generat
 | `file-tree.ts` | `getFileTree()` — directory snapshot |
 | `existing-config.ts` | `readExistingConfigs()` — reads CLAUDE.md, .cursorrules, .cursor/rules/, skills |
 | `code-analysis.ts` | `analyzeCode()` — file summaries, API routes, config files |
-| `index.ts` | Orchestrates all above, calls `enrichFingerprintWithLLM()` for richer detection |
+| `index.ts` | Orchestrates all above, LLM enrichment is automatic |
 
 ### `Fingerprint` type (key fields)
 

@@ -25,7 +25,7 @@ npx vitest run src/scoring/__tests__/accuracy.test.ts  # Single file
 
 **Commands** (`src/commands/`): `onboard` (alias `init`), `regenerate` (alias `regen`/`re`), `status`, `undo`, `config`, `skills`, `score`, `refresh`, `hooks`, `learn`
 
-**Fingerprint** (`src/fingerprint/`): `git.ts` · `languages.ts` · `package-json.ts` · `file-tree.ts` · `existing-config.ts` · `code-analysis.ts` · `index.ts` (orchestrates + `enrichFingerprintWithLLM`)
+**Fingerprint** (`src/fingerprint/`): `git.ts` · `file-tree.ts` · `existing-config.ts` · `code-analysis.ts` · `index.ts` (orchestrates, LLM enrichment built-in)
 
 **Writers** (`src/writers/`): `claude/` · `cursor/` · `codex/` (AGENTS.md + `.agents/skills/`) · `staging.ts` (buffer before confirm) · `manifest.ts` (`.caliber/manifest.json`) · `backup.ts` (`.caliber/backups/`) · `refresh.ts`
 

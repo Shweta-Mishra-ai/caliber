@@ -3,7 +3,7 @@ import ora from 'ora';
 import select from '@inquirer/select';
 import { mkdirSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
-import { collectFingerprint } from '../fingerprint/index.js';
+import { collectFingerprint, Fingerprint } from '../fingerprint/index.js';
 import { scanLocalState } from '../scanner/index.js';
 import { llmJsonCall } from '../llm/index.js';
 import { loadConfig } from '../llm/config.js';
@@ -255,9 +255,8 @@ Return ONLY the JSON array.`,
     }));
 }
 
-function buildProjectContext(dir: string): string {
+function buildProjectContext(fingerprint: Fingerprint): string {
   const parts: string[] = [];
-  const fingerprint = collectFingerprint(dir);
 
   if (fingerprint.packageName) parts.push(`Package: ${fingerprint.packageName}`);
   if (fingerprint.languages.length > 0) parts.push(`Languages: ${fingerprint.languages.join(', ')}`);
@@ -354,7 +353,7 @@ export async function recommendCommand() {
 }
 
 export async function searchAndInstallSkills(): Promise<void> {
-  const fingerprint = collectFingerprint(process.cwd());
+  const fingerprint = await collectFingerprint(process.cwd());
   const platforms = detectLocalPlatforms();
   const installedSkills = getInstalledSkills();
 
@@ -401,7 +400,7 @@ export async function searchAndInstallSkills(): Promise<void> {
   if (config) {
     const scoreSpinner = ora('Scoring relevance for your project...').start();
     try {
-      const projectContext = buildProjectContext(process.cwd());
+      const projectContext = buildProjectContext(fingerprint);
       results = await scoreWithLLM(newCandidates, projectContext, technologies);
       if (results.length === 0) {
         scoreSpinner.succeed('No highly relevant skills found for your specific project.');

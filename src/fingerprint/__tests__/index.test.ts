@@ -9,6 +9,9 @@ vi.mock('../existing-config.js', () => ({ readExistingConfigs: () => ({}) }));
 vi.mock('../code-analysis.js', () => ({
   analyzeCode: () => ({ fileSummaries: [], configFiles: [], truncated: false }),
 }));
+vi.mock('../../ai/detect.js', () => ({
+  detectProjectStack: vi.fn().mockResolvedValue({ languages: [], frameworks: [], tools: [] }),
+}));
 
 describe('computeFingerprintHash', () => {
   const baseFingerprint: Fingerprint = {
@@ -50,37 +53,29 @@ describe('collectFingerprint', () => {
     vi.clearAllMocks();
   });
 
-  it('returns empty languages, frameworks, and tools (LLM fills them later)', () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    const fp = collectFingerprint('/tmp/test-project');
-    expect(fp.languages).toEqual([]);
-    expect(fp.frameworks).toEqual([]);
-    expect(fp.tools).toEqual([]);
-  });
-
-  it('reads packageName from package.json when present', () => {
+  it('reads packageName from package.json when present', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ name: 'my-app' }) as never);
-    const fp = collectFingerprint('/tmp/test-project');
+    const fp = await collectFingerprint('/tmp/test-project');
     expect(fp.packageName).toBe('my-app');
   });
 
-  it('returns undefined packageName when no package.json', () => {
+  it('returns undefined packageName when no package.json', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    const fp = collectFingerprint('/tmp/test-project');
+    const fp = await collectFingerprint('/tmp/test-project');
     expect(fp.packageName).toBeUndefined();
   });
 
-  it('returns undefined packageName when package.json is invalid', () => {
+  it('returns undefined packageName when package.json is invalid', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('not json' as never);
-    const fp = collectFingerprint('/tmp/test-project');
+    const fp = await collectFingerprint('/tmp/test-project');
     expect(fp.packageName).toBeUndefined();
   });
 
-  it('includes gitRemoteUrl, fileTree, existingConfigs, and codeAnalysis', () => {
+  it('includes gitRemoteUrl, fileTree, existingConfigs, and codeAnalysis', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    const fp = collectFingerprint('/tmp/test-project');
+    const fp = await collectFingerprint('/tmp/test-project');
     expect(fp.gitRemoteUrl).toBe('https://github.com/test/repo');
     expect(fp.fileTree).toEqual(['src/index.ts', 'package.json']);
     expect(fp.existingConfigs).toEqual({});

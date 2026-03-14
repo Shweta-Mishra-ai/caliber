@@ -22,14 +22,14 @@ export interface Fingerprint {
   description?: string;
 }
 
-export function collectFingerprint(dir: string): Fingerprint {
+export async function collectFingerprint(dir: string): Promise<Fingerprint> {
   const gitRemoteUrl = getGitRemoteUrl();
   const fileTree = getFileTree(dir);
   const existingConfigs = readExistingConfigs(dir);
   const codeAnalysis = analyzeCode(dir);
   const packageName = readPackageName(dir);
 
-  return {
+  const fingerprint: Fingerprint = {
     gitRemoteUrl,
     packageName,
     languages: [],
@@ -39,6 +39,10 @@ export function collectFingerprint(dir: string): Fingerprint {
     existingConfigs,
     codeAnalysis,
   };
+
+  await enrichWithLLM(fingerprint, dir);
+
+  return fingerprint;
 }
 
 function readPackageName(dir: string): string | undefined {
@@ -77,7 +81,7 @@ const DEP_FILE_PATTERNS = [
 
 const MAX_CONTENT_SIZE = 50 * 1024;
 
-export async function enrichFingerprintWithLLM(fingerprint: Fingerprint, dir: string): Promise<void> {
+async function enrichWithLLM(fingerprint: Fingerprint, dir: string): Promise<void> {
   try {
     const config = loadConfig();
     if (!config) return;
@@ -106,24 +110,10 @@ export async function enrichFingerprintWithLLM(fingerprint: Fingerprint, dir: st
 
     const result = await detectProjectStack(fingerprint.fileTree, fileContents);
 
-    if (result.languages?.length) {
-      const langSet = new Set(fingerprint.languages);
-      for (const lang of result.languages) langSet.add(lang);
-      fingerprint.languages = [...langSet];
-    }
-
-    if (result.frameworks?.length) {
-      const fwSet = new Set(fingerprint.frameworks);
-      for (const fw of result.frameworks) fwSet.add(fw);
-      fingerprint.frameworks = [...fwSet];
-    }
-
-    if (result.tools?.length) {
-      const toolSet = new Set(fingerprint.tools);
-      for (const tool of result.tools) toolSet.add(tool);
-      fingerprint.tools = [...toolSet];
-    }
+    if (result.languages?.length) fingerprint.languages = result.languages;
+    if (result.frameworks?.length) fingerprint.frameworks = result.frameworks;
+    if (result.tools?.length) fingerprint.tools = result.tools;
   } catch {
-    // Silently fall back to local detection
+    // Silently continue — LLM enrichment is best-effort
   }
 }

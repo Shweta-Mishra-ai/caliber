@@ -58,7 +58,7 @@ async function refreshSingleRepo(repoDir: string, options: RefreshOptions & { la
   const spinner = quiet ? null : ora(`${prefix}Analyzing changes...`).start();
 
   const existingDocs = readExistingConfigs(repoDir);
-  const fingerprint = collectFingerprint(repoDir);
+  const fingerprint = await collectFingerprint(repoDir);
   const projectContext = {
     languages: fingerprint.languages,
     frameworks: fingerprint.frameworks,
