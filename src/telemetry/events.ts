@@ -11,7 +11,7 @@ export function trackInitProjectDiscovered(languageCount: number, dependencyCoun
 }
 
 export function trackInitAgentSelected(agents: string[]): void {
-  trackEvent('init_agent_selected', { agents });
+  trackEvent('init_agent_selected', { agents: agents.join(',') });
 }
 
 export function trackInitScoreComputed(score: number, passingCount: number, failingCount: number, earlyExit: boolean): void {
