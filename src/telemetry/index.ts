@@ -8,7 +8,7 @@ import {
   markNoticeShown,
 } from './config.js';
 
-const POSTHOG_KEY = 'phx_o1APdJxfIEvJ2RM0XyUX635wUms4mAWXNjPiIbLjGbU0lIi';
+const POSTHOG_KEY = 'phc_XXrV0pSX4s2QVxVoOaeuyXDvtlRwPAjovt1ttMGVMPp';
 
 let client: PostHog | null = null;
 let distinctId: string | null = null;
@@ -22,7 +22,7 @@ export function initTelemetry(): void {
   client = new PostHog(POSTHOG_KEY, {
     host: 'https://us.i.posthog.com',
     flushAt: 20,
-    flushInterval: 0,
+    flushInterval: 10000,
   });
 
   // Show first-run notice
