@@ -26,9 +26,9 @@ const CONFIG_GLOBS_DIRS: Array<{ dir: string; pattern: RegExp }> = [
   { dir: '.github/workflows', pattern: /\.ya?ml$/ },
 ];
 
-const TOTAL_BUDGET = 50_000;
-const CONFIG_BUDGET = Math.floor(TOTAL_BUDGET * 0.3);
-const SOURCE_BUDGET = Math.floor(TOTAL_BUDGET * 0.7);
+const TOTAL_BUDGET = 400_000; // ~100K tokens
+const CONFIG_BUDGET = Math.floor(TOTAL_BUDGET * 0.15); // 60K chars for config files
+const SOURCE_BUDGET = Math.floor(TOTAL_BUDGET * 0.85); // 340K chars for source code
 
 export interface FileSummary {
   path: string;
@@ -39,6 +39,7 @@ export interface FileSummary {
   classes: string[];
   types: string[];
   routes: string[];
+  content?: string;
 }
 
 export interface ConfigFileContent {
@@ -73,34 +74,80 @@ export function analyzeCode(dir: string): CodeAnalysis {
   let truncated = false;
   const fileSummaries: FileSummary[] = [];
 
+  // Phase 1: Include full content for high-priority files (entry points, routes, schemas)
+  // Phase 2: Include summaries only for remaining files
+  const MAX_CONTENT_LINE_COUNT = 300;
+  const CONTENT_BUDGET = Math.floor(SOURCE_BUDGET * 0.75);
+  const SUMMARY_BUDGET = SOURCE_BUDGET - CONTENT_BUDGET;
+
+  // Phase 1 — full content for priority files
   for (const relPath of sourceFiles) {
     const fullPath = path.join(dir, relPath);
-    let content: string;
+    let fileContent: string;
     try {
-      content = fs.readFileSync(fullPath, 'utf-8');
+      fileContent = fs.readFileSync(fullPath, 'utf-8');
     } catch {
       continue;
     }
 
-    const lineCount = content.split('\n').length;
-    if (lineCount > 500) continue;
+    const lineCount = fileContent.split('\n').length;
+    if (lineCount > MAX_CONTENT_LINE_COUNT) continue;
 
     const ext = path.extname(relPath);
     const language = resolveLanguage(ext);
     if (!language) continue;
 
     const summary = language === 'py'
-      ? extractPython(relPath, content)
-      : extractTypeScriptJavaScript(relPath, content, language);
+      ? extractPython(relPath, fileContent)
+      : extractTypeScriptJavaScript(relPath, fileContent, language);
 
-    const summarySize = estimateSummarySize(summary);
-    if (sourceChars + summarySize > SOURCE_BUDGET) {
+    summary.content = fileContent;
+    const entrySize = estimateSummarySize(summary) + fileContent.length;
+
+    if (sourceChars + entrySize > CONTENT_BUDGET) {
+      // Switch to summary-only mode for remaining files
       truncated = true;
       break;
     }
 
     fileSummaries.push(summary);
-    sourceChars += summarySize;
+    sourceChars += entrySize;
+  }
+
+  // Phase 2 — summaries only for remaining files
+  const processedPaths = new Set(fileSummaries.map(f => f.path));
+  let summaryChars = 0;
+
+  for (const relPath of sourceFiles) {
+    if (processedPaths.has(relPath)) continue;
+
+    const fullPath = path.join(dir, relPath);
+    let fileContent: string;
+    try {
+      fileContent = fs.readFileSync(fullPath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    const lineCount = fileContent.split('\n').length;
+    if (lineCount > 1000) continue;
+
+    const ext = path.extname(relPath);
+    const language = resolveLanguage(ext);
+    if (!language) continue;
+
+    const summary = language === 'py'
+      ? extractPython(relPath, fileContent)
+      : extractTypeScriptJavaScript(relPath, fileContent, language);
+
+    const summarySize = estimateSummarySize(summary);
+    if (summaryChars + summarySize > SUMMARY_BUDGET) {
+      truncated = true;
+      break;
+    }
+
+    fileSummaries.push(summary);
+    summaryChars += summarySize;
   }
 
   return { fileSummaries, configFiles: trimmedConfigs, truncated };

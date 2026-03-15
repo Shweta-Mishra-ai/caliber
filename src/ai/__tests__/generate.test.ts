@@ -51,14 +51,14 @@ describe('buildGeneratePrompt', () => {
     expect(prompt).toContain('Project description: A cool app');
   });
 
-  it('truncates file tree to 200 entries', () => {
-    const fileTree = Array.from({ length: 300 }, (_, i) => `src/file-${i}.ts`);
+  it('truncates file tree to 500 entries', () => {
+    const fileTree = Array.from({ length: 600 }, (_, i) => `src/file-${i}.ts`);
     const fp = makeFingerprint({ fileTree });
     const prompt = buildGeneratePrompt(fp, ['claude']);
-    expect(prompt).toContain('200/300');
+    expect(prompt).toContain('500/600');
     expect(prompt).toContain('file-0.ts');
-    expect(prompt).toContain('file-199.ts');
-    expect(prompt).not.toContain('file-200.ts');
+    expect(prompt).toContain('file-499.ts');
+    expect(prompt).not.toContain('file-500.ts');
   });
 
   it('truncates CLAUDE.md content to 8000 chars', () => {
@@ -110,8 +110,8 @@ describe('buildGeneratePrompt', () => {
     expect(prompt).toContain('2 more rules omitted');
   });
 
-  it('limits config files to 15', () => {
-    const configFiles = Array.from({ length: 20 }, (_, i) => ({
+  it('limits config files to 20', () => {
+    const configFiles = Array.from({ length: 25 }, (_, i) => ({
       path: `config-${i}.json`,
       content: `{"index": ${i}}`,
     }));
@@ -124,11 +124,11 @@ describe('buildGeneratePrompt', () => {
     });
     const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('config-0.json');
-    expect(prompt).toContain('config-14.json');
-    expect(prompt).not.toContain('config-15.json');
+    expect(prompt).toContain('config-19.json');
+    expect(prompt).not.toContain('config-20.json');
   });
 
-  it('limits API routes to 50', () => {
+  it('limits API routes to 100', () => {
     const fileSummaries = [{
       path: 'src/routes.ts',
       language: 'ts' as const,
@@ -137,20 +137,20 @@ describe('buildGeneratePrompt', () => {
       functions: [],
       classes: [],
       types: [],
-      routes: Array.from({ length: 60 }, (_, i) => `GET /api/route-${i}`),
+      routes: Array.from({ length: 120 }, (_, i) => `GET /api/route-${i}`),
     }];
     const fp = makeFingerprint({
       codeAnalysis: { configFiles: [], fileSummaries, truncated: false },
     });
     const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('route-0');
-    expect(prompt).toContain('route-49');
-    expect(prompt).not.toContain('route-50');
-    expect(prompt).toContain('10 more routes omitted');
+    expect(prompt).toContain('route-99');
+    expect(prompt).not.toContain('route-100');
+    expect(prompt).toContain('20 more routes omitted');
   });
 
-  it('limits file summaries to 60 and caps imports/exports at 10', () => {
-    const fileSummaries = Array.from({ length: 70 }, (_, i) => ({
+  it('limits file summaries to 200 and caps imports/exports at 10', () => {
+    const fileSummaries = Array.from({ length: 210 }, (_, i) => ({
       path: `src/file-${i}.ts`,
       language: 'ts' as const,
       imports: Array.from({ length: 15 }, (_, j) => `import-${j}`),
@@ -165,8 +165,8 @@ describe('buildGeneratePrompt', () => {
     });
     const prompt = buildGeneratePrompt(fp, ['claude']);
     expect(prompt).toContain('file-0.ts');
-    expect(prompt).toContain('file-59.ts');
-    expect(prompt).not.toContain('file-60.ts');
+    expect(prompt).toContain('file-199.ts');
+    expect(prompt).not.toContain('file-200.ts');
     expect(prompt).toContain('10 more files omitted');
     // Check that imports are capped at 10
     expect(prompt).toContain('import-9');

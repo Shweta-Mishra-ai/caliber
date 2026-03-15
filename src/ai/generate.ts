@@ -462,15 +462,16 @@ async function generateMonolithic(
 }
 
 const LIMITS = {
-  FILE_TREE_ENTRIES: 200,
+  FILE_TREE_ENTRIES: 500,
   EXISTING_CONFIG_CHARS: 8000,
   SKILLS_MAX: 10,
   SKILL_CHARS: 3000,
   RULES_MAX: 10,
-  CONFIG_FILES_MAX: 15,
-  CONFIG_FILE_CHARS: 3000,
-  ROUTES_MAX: 50,
-  FILE_SUMMARIES_MAX: 60,
+  CONFIG_FILES_MAX: 20,
+  CONFIG_FILE_CHARS: 5000,
+  ROUTES_MAX: 100,
+  FILE_SUMMARIES_MAX: 200,
+  FILE_CONTENT_CHARS: 8000,
 } as const;
 
 function truncate(text: string, maxChars: number): string {
@@ -604,9 +605,21 @@ export function buildGeneratePrompt(
       }
     }
 
-    if (ca.fileSummaries.length > 0) {
+    // Source files with full content (for pattern extraction)
+    const filesWithContent = ca.fileSummaries.filter(f => f.content);
+    const filesWithoutContent = ca.fileSummaries.filter(f => !f.content);
+
+    if (filesWithContent.length > 0) {
+      parts.push('\n--- Source Files (full content — use these to extract patterns for skills) ---');
+      for (const f of filesWithContent.slice(0, LIMITS.FILE_SUMMARIES_MAX)) {
+        parts.push(`\n[${f.path}] (${f.language})`);
+        parts.push(truncate(f.content!, LIMITS.FILE_CONTENT_CHARS));
+      }
+    }
+
+    if (filesWithoutContent.length > 0) {
       parts.push('\n--- Source File Summaries ---');
-      for (const f of ca.fileSummaries.slice(0, LIMITS.FILE_SUMMARIES_MAX)) {
+      for (const f of filesWithoutContent.slice(0, LIMITS.FILE_SUMMARIES_MAX)) {
         const sections: string[] = [`[${f.path}] (${f.language})`];
         if (f.imports.length > 0) sections.push(`  imports: ${f.imports.slice(0, 10).join('; ')}`);
         if (f.exports.length > 0) sections.push(`  exports: ${f.exports.slice(0, 10).join(', ')}`);
@@ -615,8 +628,8 @@ export function buildGeneratePrompt(
         if (f.types.length > 0) sections.push(`  types: ${f.types.slice(0, 10).join(', ')}`);
         parts.push(sections.join('\n'));
       }
-      if (ca.fileSummaries.length > LIMITS.FILE_SUMMARIES_MAX) {
-        parts.push(`\n(${ca.fileSummaries.length - LIMITS.FILE_SUMMARIES_MAX} more files omitted)`);
+      if (filesWithoutContent.length > LIMITS.FILE_SUMMARIES_MAX) {
+        parts.push(`\n(${filesWithoutContent.length - LIMITS.FILE_SUMMARIES_MAX} more files omitted)`);
       }
     }
 
@@ -627,7 +640,7 @@ export function buildGeneratePrompt(
 
   const allDeps = extractAllDeps(process.cwd());
   if (allDeps.length > 0) {
-    parts.push(`\nDEPENDENCY COVERAGE — mention at least 85% of these ${allDeps.length} packages by name in CLAUDE.md or skills for full coverage points:`);
+    parts.push(`\nProject dependencies (${allDeps.length}):`);
     parts.push(allDeps.join(', '));
   }
 
