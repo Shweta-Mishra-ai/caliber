@@ -100,6 +100,8 @@ program
   .option('--force', 'Overwrite existing setup without prompting')
   .option('--debug-report', undefined, false)
   .option('--show-tokens', 'Show token usage summary at the end')
+  .option('--auto-approve', 'Run without interactive prompts (auto-accept all)')
+  .option('--verbose', 'Show detailed logs of each step')
   .action(tracked('init', initCommand));
 
 program

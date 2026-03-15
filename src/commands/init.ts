@@ -51,6 +51,12 @@ interface InitOptions {
   force?: boolean;
   debugReport?: boolean;
   showTokens?: boolean;
+  autoApprove?: boolean;
+  verbose?: boolean;
+}
+
+function log(verbose: boolean | undefined, ...args: unknown[]): void {
+  if (verbose) console.log(chalk.dim(`  [verbose] ${args.map(String).join(' ')}`));
 }
 
 export async function initCommand(options: InitOptions) {
@@ -124,6 +130,10 @@ export async function initCommand(options: InitOptions) {
   const spinner = ora('Analyzing project...').start();
   const fingerprint = await collectFingerprint(process.cwd());
   spinner.succeed('Project analyzed');
+  log(options.verbose, `Fingerprint: ${fingerprint.languages.length} languages, ${fingerprint.frameworks.length} frameworks, ${fingerprint.fileTree.length} files`);
+  if (options.verbose && fingerprint.codeAnalysis) {
+    log(options.verbose, `Code analysis: ${fingerprint.codeAnalysis.fileSummaries.length} file summaries, ${fingerprint.codeAnalysis.configFiles.length} config files`);
+  }
 
   trackInitProjectDiscovered(fingerprint.languages.length, fingerprint.frameworks.length, fingerprint.fileTree.length);
   console.log(chalk.dim(`  Languages: ${fingerprint.languages.join(', ') || 'none detected'}`));
@@ -141,7 +151,15 @@ export async function initCommand(options: InitOptions) {
   }
 
   // Step 3: Determine target agent
-  const targetAgent = options.agent || await promptAgent();
+  let targetAgent: TargetAgent;
+  if (options.agent) {
+    targetAgent = options.agent;
+  } else if (options.autoApprove) {
+    targetAgent = ['claude'];
+    log(options.verbose, 'Auto-approve: defaulting to claude agent');
+  } else {
+    targetAgent = await promptAgent();
+  }
   trackInitAgentSelected(targetAgent);
 
   // Evaluate which failing checks aren't applicable to this project
@@ -160,6 +178,11 @@ export async function initCommand(options: InitOptions) {
   // Baseline score (after dismissals applied)
   const baselineScore = computeLocalScore(process.cwd(), targetAgent);
   displayScoreSummary(baselineScore);
+  if (options.verbose) {
+    for (const c of baselineScore.checks) {
+      log(options.verbose, `  ${c.passed ? '✓' : '✗'} ${c.name}: ${c.earnedPoints}/${c.maxPoints}${c.suggestion ? ` — ${c.suggestion}` : ''}`);
+    }
+  }
   const passingCount = baselineScore.checks.filter(c => c.passed).length;
   const failingCount = baselineScore.checks.filter(c => !c.passed).length;
 
@@ -322,6 +345,7 @@ export async function initCommand(options: InitOptions) {
   const secs = Math.floor((elapsedMs % 60000) / 1000);
   const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
   genSpinner.succeed(`Setup generated ${chalk.dim(`in ${timeStr}`)}`);
+  log(options.verbose, `Generation completed: ${elapsedMs}ms, stopReason: ${genStopReason || 'end_turn'}`);
   printSetupSummary(generatedSetup);
 
   // Session context — carries through the entire init flow
@@ -346,6 +370,10 @@ export async function initCommand(options: InitOptions) {
     console.log(chalk.dim('  No changes needed — your configs are already up to date.\n'));
     cleanupStaging();
     action = 'accept';
+  } else if (options.autoApprove) {
+    log(options.verbose, 'Auto-approve: accepting changes without review');
+    action = 'accept';
+    trackInitReviewAction(action, 'auto-approved');
   } else {
     const wantsReview = await promptWantsReview();
     if (wantsReview) {
@@ -435,7 +463,13 @@ export async function initCommand(options: InitOptions) {
   console.log('');
   console.log(title.bold('  Keep your setup up-to-date as your code evolve\n'));
   console.log(chalk.dim('  Caliber can automatically update your agent configs when your code changes.\n'));
-  const hookChoice = await promptHookType(targetAgent);
+  let hookChoice: HookChoice;
+  if (options.autoApprove) {
+    hookChoice = 'skip';
+    log(options.verbose, 'Auto-approve: skipping hook installation');
+  } else {
+    hookChoice = await promptHookType(targetAgent);
+  }
   trackInitHookSelected(hookChoice);
 
   if (hookChoice === 'claude' || hookChoice === 'both') {
@@ -484,6 +518,11 @@ export async function initCommand(options: InitOptions) {
     if (polishFailingChecks.length > 0) {
       console.log('');
       console.log(chalk.dim(`  Score: ${afterScore.score}/100 — polishing ${polishFailingChecks.length} remaining check${polishFailingChecks.length === 1 ? '' : 's'}...`));
+      if (options.verbose) {
+        for (const c of polishFailingChecks) {
+          log(options.verbose, `  Polish target: ${c.name}${c.suggestion ? ` — ${c.suggestion}` : ''}`);
+        }
+      }
 
       const polishFailing: FailingCheck[] = polishFailingChecks.map(c => ({
         name: c.name,
@@ -543,18 +582,30 @@ export async function initCommand(options: InitOptions) {
   }
 
   displayScoreDelta(baselineScore, afterScore);
+  if (options.verbose) {
+    log(options.verbose, `Final score: ${afterScore.score}/100`);
+    for (const c of afterScore.checks.filter(ch => !ch.passed)) {
+      log(options.verbose, `  Still failing: ${c.name} (${c.earnedPoints}/${c.maxPoints})${c.suggestion ? ` — ${c.suggestion}` : ''}`);
+    }
+  }
 
   // Step 6: Community skills
   console.log(title.bold('\n  Step 6/6 — Community skills\n'));
   console.log(chalk.dim('  Search public skill registries for skills that match your tech stack.\n'));
 
-  const wantsSkills = await select({
-    message: 'Search public repos for relevant skills to add to this project?',
-    choices: [
-      { name: 'Yes, find skills for my project', value: true },
-      { name: 'Skip for now', value: false },
-    ],
-  });
+  let wantsSkills: boolean;
+  if (options.autoApprove) {
+    wantsSkills = false;
+    log(options.verbose, 'Auto-approve: skipping skills search');
+  } else {
+    wantsSkills = await select({
+      message: 'Search public repos for relevant skills to add to this project?',
+      choices: [
+        { name: 'Yes, find skills for my project', value: true },
+        { name: 'Skip for now', value: false },
+      ],
+    });
+  }
 
   if (wantsSkills) {
     trackInitSkillsSearch(true, 0);
