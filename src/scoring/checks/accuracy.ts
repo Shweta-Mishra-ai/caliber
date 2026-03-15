@@ -51,7 +51,7 @@ function validateDocumentedCommands(dir: string): {
 
   let match: RegExpExecArray | null;
   while ((match = cmdPattern.exec(claudeMd)) !== null) {
-    const scriptName = match[1];
+    const scriptName = match[1].replace(/[.,;:!?)]+$/, '');
     if (seen.has(scriptName)) continue;
     seen.add(scriptName);
 
