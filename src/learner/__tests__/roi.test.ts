@@ -19,6 +19,7 @@ function makeSession(overrides: Partial<SessionROISummary> = {}): SessionROISumm
     eventCount: 50,
     failureCount: 3,
     promptCount: 1,
+    wasteSeconds: 0,
     hadLearningsAvailable: false,
     learningsCount: 0,
     newLearningsProduced: 0,
@@ -60,11 +61,13 @@ describe('ROI stats', () => {
       sessions: [makeSession()],
       totals: {
         totalWasteTokens: 500,
+        totalWasteSeconds: 0,
         totalSessionsWithLearnings: 0,
         totalSessionsWithoutLearnings: 1,
         totalFailuresWithLearnings: 0,
         totalFailuresWithoutLearnings: 3,
         estimatedSavingsTokens: 0,
+        estimatedSavingsSeconds: 0,
         firstSessionTimestamp: '2026-01-01T00:00:00Z',
         lastSessionTimestamp: '2026-01-01T00:00:00Z',
       },
@@ -162,11 +165,13 @@ describe('formatROISummary', () => {
       ],
       totals: {
         totalWasteTokens: 2000,
+        totalWasteSeconds: 30,
         totalSessionsWithLearnings: 2,
         totalSessionsWithoutLearnings: 1,
         totalFailuresWithLearnings: 3,
         totalFailuresWithoutLearnings: 5,
         estimatedSavingsTokens: 4000,
+        estimatedSavingsSeconds: 60,
         firstSessionTimestamp: '2026-01-01T00:00:00Z',
         lastSessionTimestamp: '2026-03-15T00:00:00Z',
       },
@@ -180,6 +185,8 @@ describe('formatROISummary', () => {
     expect(output).toContain('Failure rate (with learnings): 1.5/session');
     expect(output).toContain('2,000 tokens');
     expect(output).toContain('4,000 tokens');
+    expect(output).toContain('at least 1m');
+    expect(output).toContain('not counting human frustration');
   });
 
   it('omits failure rate section when no sessions of that type', () => {
@@ -188,11 +195,13 @@ describe('formatROISummary', () => {
       sessions: [makeSession({ hadLearningsAvailable: true, failureCount: 2, learningsCount: 5 })],
       totals: {
         totalWasteTokens: 0,
+        totalWasteSeconds: 0,
         totalSessionsWithLearnings: 1,
         totalSessionsWithoutLearnings: 0,
         totalFailuresWithLearnings: 2,
         totalFailuresWithoutLearnings: 0,
         estimatedSavingsTokens: 0,
+        estimatedSavingsSeconds: 0,
         firstSessionTimestamp: '2026-01-01T00:00:00Z',
         lastSessionTimestamp: '2026-01-01T00:00:00Z',
       },

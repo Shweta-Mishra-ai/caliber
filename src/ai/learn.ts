@@ -117,16 +117,20 @@ export async function analyzeEvents(
 
 export interface WasteEstimate {
   totalWasteTokens: number;
+  totalWasteSeconds: number;
   failureCount: number;
   promptCount: number;
 }
 
 export function calculateSessionWaste(events: SessionEvent[]): WasteEstimate {
   let totalWasteTokens = 0;
+  let totalWasteSeconds = 0;
   let failureCount = 0;
   let promptCount = 0;
 
-  for (const event of events) {
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+
     if (event.hook_event_name === 'PostToolUseFailure') {
       const te = event as ToolEvent;
       const inputStr = JSON.stringify(te.tool_input);
@@ -135,10 +139,17 @@ export function calculateSessionWaste(events: SessionEvent[]): WasteEstimate {
         : JSON.stringify(te.tool_response);
       totalWasteTokens += estimateTokens(inputStr + responseStr);
       failureCount++;
+
+      if (i > 0) {
+        const prev = new Date(events[i - 1].timestamp).getTime();
+        const curr = new Date(event.timestamp).getTime();
+        const elapsed = (curr - prev) / 1000;
+        if (elapsed > 0 && elapsed < 600) totalWasteSeconds += elapsed;
+      }
     } else if (event.hook_event_name === 'UserPromptSubmit') {
       promptCount++;
     }
   }
 
-  return { totalWasteTokens, failureCount, promptCount };
+  return { totalWasteTokens, totalWasteSeconds, failureCount, promptCount };
 }

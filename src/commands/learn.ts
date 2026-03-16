@@ -192,6 +192,7 @@ export async function learnFinalizeCommand(options?: { force?: boolean }) {
       eventCount: events.length,
       failureCount: waste.failureCount,
       promptCount: waste.promptCount,
+      wasteSeconds: Math.round(waste.totalWasteSeconds),
       hadLearningsAvailable: hadLearnings,
       learningsCount: existingLearnedItems,
       newLearningsProduced,
@@ -207,12 +208,14 @@ export async function learnFinalizeCommand(options?: { force?: boolean }) {
       learningsAvailableCount: existingLearnedItems,
       newLearningsProduced,
       wasteTokens: waste.totalWasteTokens,
+      wasteSeconds: Math.round(waste.totalWasteSeconds),
     });
 
     const t = roiStats.totals;
     const totalSessions = t.totalSessionsWithLearnings + t.totalSessionsWithoutLearnings;
     trackLearnROISnapshot({
       totalWasteTokens: t.totalWasteTokens,
+      totalWasteSeconds: t.totalWasteSeconds,
       totalSessions,
       sessionsWithLearnings: t.totalSessionsWithLearnings,
       sessionsWithoutLearnings: t.totalSessionsWithoutLearnings,
@@ -223,6 +226,7 @@ export async function learnFinalizeCommand(options?: { force?: boolean }) {
         ? t.totalFailuresWithoutLearnings / t.totalSessionsWithoutLearnings
         : 0,
       estimatedSavingsTokens: t.estimatedSavingsTokens,
+      estimatedSavingsSeconds: t.estimatedSavingsSeconds,
       learningCount: roiStats.learnings.length,
     });
 

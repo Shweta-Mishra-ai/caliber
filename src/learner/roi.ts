@@ -17,6 +17,7 @@ export interface SessionROISummary {
   eventCount: number;
   failureCount: number;
   promptCount: number;
+  wasteSeconds: number;
   hadLearningsAvailable: boolean;
   learningsCount: number;
   newLearningsProduced: number;
@@ -24,11 +25,13 @@ export interface SessionROISummary {
 
 export interface ROITotals {
   totalWasteTokens: number;
+  totalWasteSeconds: number;
   totalSessionsWithLearnings: number;
   totalSessionsWithoutLearnings: number;
   totalFailuresWithLearnings: number;
   totalFailuresWithoutLearnings: number;
   estimatedSavingsTokens: number;
+  estimatedSavingsSeconds: number;
   firstSessionTimestamp: string;
   lastSessionTimestamp: string;
 }
@@ -41,11 +44,13 @@ export interface ROIStats {
 
 const DEFAULT_TOTALS: ROITotals = {
   totalWasteTokens: 0,
+  totalWasteSeconds: 0,
   totalSessionsWithLearnings: 0,
   totalSessionsWithoutLearnings: 0,
   totalFailuresWithLearnings: 0,
   totalFailuresWithoutLearnings: 0,
   estimatedSavingsTokens: 0,
+  estimatedSavingsSeconds: 0,
   firstSessionTimestamp: '',
   lastSessionTimestamp: '',
 };
@@ -75,6 +80,7 @@ function recalculateTotals(stats: ROIStats): void {
   const totals = stats.totals;
 
   totals.totalWasteTokens = stats.learnings.reduce((sum, l) => sum + l.wasteTokens, 0);
+  totals.totalWasteSeconds = 0;
 
   totals.totalSessionsWithLearnings = 0;
   totals.totalSessionsWithoutLearnings = 0;
@@ -82,6 +88,7 @@ function recalculateTotals(stats: ROIStats): void {
   totals.totalFailuresWithoutLearnings = 0;
 
   for (const s of stats.sessions) {
+    totals.totalWasteSeconds += s.wasteSeconds || 0;
     if (s.hadLearningsAvailable) {
       totals.totalSessionsWithLearnings++;
       totals.totalFailuresWithLearnings += s.failureCount;
@@ -92,6 +99,7 @@ function recalculateTotals(stats: ROIStats): void {
   }
 
   totals.estimatedSavingsTokens = totals.totalWasteTokens * totals.totalSessionsWithLearnings;
+  totals.estimatedSavingsSeconds = totals.totalWasteSeconds * totals.totalSessionsWithLearnings;
 
   if (stats.sessions.length > 0) {
     totals.firstSessionTimestamp = stats.sessions[0].timestamp;
@@ -119,6 +127,13 @@ export function recordSession(summary: SessionROISummary, learnings?: LearningCo
   return stats;
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+}
+
 export function formatROISummary(stats: ROIStats): string {
   const t = stats.totals;
   const totalSessions = t.totalSessionsWithLearnings + t.totalSessionsWithoutLearnings;
@@ -130,9 +145,7 @@ export function formatROISummary(stats: ROIStats): string {
   lines.push(`  Sessions with learnings:       ${t.totalSessionsWithLearnings}`);
 
   if (t.totalSessionsWithoutLearnings > 0) {
-    const rateWithout = t.totalSessionsWithoutLearnings > 0
-      ? (t.totalFailuresWithoutLearnings / t.totalSessionsWithoutLearnings).toFixed(1)
-      : '0.0';
+    const rateWithout = (t.totalFailuresWithoutLearnings / t.totalSessionsWithoutLearnings).toFixed(1);
     lines.push(`  Failure rate (no learnings):   ${rateWithout}/session`);
   }
 
@@ -147,6 +160,12 @@ export function formatROISummary(stats: ROIStats): string {
 
   if (t.estimatedSavingsTokens > 0) {
     lines.push(`  Estimated savings:             ~${t.estimatedSavingsTokens.toLocaleString()} tokens`);
+  }
+
+  if (t.estimatedSavingsSeconds > 0) {
+    lines.push(`  Time saved:                    at least ${formatDuration(t.estimatedSavingsSeconds)} (not counting human frustration)`);
+  } else if (t.totalWasteSeconds > 0) {
+    lines.push(`  Time wasted on failures:       ${formatDuration(t.totalWasteSeconds)} (and counting)`);
   }
 
   return lines.join('\n');
