@@ -28,7 +28,7 @@ import { searchSkills, selectSkills, installSkills } from './recommend.js';
 import type { SkillSearchResult } from './recommend.js';
 import type { FailingCheck, PassingCheck } from '../ai/generate.js';
 import { buildGeneratePrompt } from '../ai/generate.js';
-import { runScoreRefineWithSpinner } from '../ai/score-refine.js';
+import { scoreAndRefine } from '../ai/score-refine.js';
 import { DebugReport } from '../lib/debug-report.js';
 import { ParallelTaskDisplay } from '../utils/parallel-tasks.js';
 import {
@@ -230,6 +230,7 @@ export async function initCommand(options: InitOptions) {
   const TASK_CONFIG = display.add('Generating configs');
   const TASK_SKILLS_GEN = display.add('Generating skills');
   const TASK_SKILLS_SEARCH = wantsSkills ? display.add('Searching community skills') : -1;
+  const TASK_SCORE_REFINE = display.add('Validating & refining setup');
   display.start();
   display.enableWaitingContent();
 
@@ -363,6 +364,31 @@ export async function initCommand(options: InitOptions) {
 
     await Promise.all([generatePromise, searchPromise]);
 
+    // Phase D: Score-based auto-refinement
+    if (generatedSetup) {
+      display.update(TASK_SCORE_REFINE, 'running');
+      const sessionHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      sessionHistory.push({
+        role: 'assistant',
+        content: summarizeSetup('Initial generation', generatedSetup),
+      });
+      try {
+        const refined = await scoreAndRefine(generatedSetup, process.cwd(), sessionHistory, {
+          onStatus: (msg) => display.update(TASK_SCORE_REFINE, 'running', msg),
+        });
+        if (refined !== generatedSetup) {
+          display.update(TASK_SCORE_REFINE, 'done', 'Refined');
+          generatedSetup = refined;
+        } else {
+          display.update(TASK_SCORE_REFINE, 'done', 'Passed');
+        }
+      } catch {
+        display.update(TASK_SCORE_REFINE, 'done', 'Skipped');
+      }
+    } else {
+      display.update(TASK_SCORE_REFINE, 'failed', 'No setup to validate');
+    }
+
   } catch (err) {
     display.stop();
     const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -402,9 +428,6 @@ export async function initCommand(options: InitOptions) {
     role: 'assistant',
     content: summarizeSetup('Initial generation', generatedSetup),
   });
-
-  // Score-based auto-refinement
-  generatedSetup = await runScoreRefineWithSpinner(generatedSetup, process.cwd(), sessionHistory);
 
   // ───────────────────────────────────────────────────────────────────────────
   // Step 3 — Review
