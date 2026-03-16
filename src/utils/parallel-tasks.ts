@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import stripAnsi from 'strip-ansi';
+import { WAITING_CARDS, renderCard, type WaitingCard } from './waiting-content.js';
 
 type TaskStatus = 'pending' | 'running' | 'done' | 'failed';
 
@@ -13,6 +13,7 @@ interface TaskState {
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SPINNER_INTERVAL_MS = 80;
+const CARD_ADVANCE_MS = 15_000;
 const NAME_COL_WIDTH = 26;
 const PREFIX = '    ';
 
@@ -23,6 +24,15 @@ export class ParallelTaskDisplay {
   private timer: ReturnType<typeof setInterval> | null = null;
   private startTime = 0;
   private rendered = false;
+
+  private waitingEnabled = false;
+  private waitingCards: WaitingCard[] = [];
+  private currentCard = 0;
+  private cardTimer: ReturnType<typeof setInterval> | null = null;
+  private keypressHandler: ((key: Buffer) => void) | null = null;
+  private cachedCardLines: string[] | null = null;
+  private cachedCardIndex = -1;
+  private cachedCardCols = -1;
 
   add(name: string): number {
     const index = this.tasks.length;
@@ -52,12 +62,90 @@ export class ParallelTaskDisplay {
     if (message !== undefined) task.message = message;
   }
 
+  enableWaitingContent(): void {
+    if (!process.stdin.isTTY) return;
+
+    this.waitingCards = WAITING_CARDS;
+    if (this.waitingCards.length === 0) return;
+
+    this.waitingEnabled = true;
+    this.currentCard = 0;
+
+    this.cardTimer = setInterval(() => {
+      this.advanceCard(1);
+    }, CARD_ADVANCE_MS);
+
+    const { stdin } = process;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+
+    this.keypressHandler = (key: Buffer) => {
+      const str = String(key);
+      switch (str) {
+        case '\x1b[C':
+        case 'n':
+          this.advanceCard(1);
+          this.resetCardTimer();
+          break;
+        case '\x1b[D':
+        case 'p':
+          this.advanceCard(-1);
+          this.resetCardTimer();
+          break;
+        case '\x03':
+          this.disableWaitingContent();
+          process.kill(process.pid, 'SIGINT');
+          break;
+      }
+    };
+
+    stdin.on('data', this.keypressHandler);
+  }
+
   stop(): void {
+    this.disableWaitingContent();
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
     this.draw(false);
+  }
+
+  private advanceCard(offset: number): void {
+    this.currentCard = (this.currentCard + offset + this.waitingCards.length) % this.waitingCards.length;
+    this.cachedCardLines = null;
+  }
+
+  private disableWaitingContent(): void {
+    if (!this.waitingEnabled) return;
+
+    if (this.cardTimer) {
+      clearInterval(this.cardTimer);
+      this.cardTimer = null;
+    }
+
+    if (this.keypressHandler) {
+      const { stdin } = process;
+      stdin.removeListener('data', this.keypressHandler);
+      if (stdin.isTTY) {
+        stdin.setRawMode(false);
+        stdin.pause();
+      }
+      this.keypressHandler = null;
+    }
+
+    this.waitingEnabled = false;
+    this.cachedCardLines = null;
+  }
+
+  private resetCardTimer(): void {
+    if (this.cardTimer) {
+      clearInterval(this.cardTimer);
+      this.cardTimer = setInterval(() => {
+        this.advanceCard(1);
+      }, CARD_ADVANCE_MS);
+    }
   }
 
   private formatTime(ms: number): string {
@@ -126,6 +214,18 @@ export class ParallelTaskDisplay {
     stdout.write('\x1b[0J');
 
     const lines = this.tasks.map(t => this.renderLine(t));
+
+    if (this.waitingEnabled && this.waitingCards.length > 0 && stdout.isTTY) {
+      const cols = stdout.columns || 80;
+      if (this.currentCard !== this.cachedCardIndex || cols !== this.cachedCardCols || !this.cachedCardLines) {
+        const card = this.waitingCards[this.currentCard];
+        this.cachedCardLines = renderCard(card, this.currentCard, this.waitingCards.length, cols);
+        this.cachedCardIndex = this.currentCard;
+        this.cachedCardCols = cols;
+      }
+      lines.push(...this.cachedCardLines);
+    }
+
     const output = lines.join('\n');
     stdout.write(output + '\n');
     this.lineCount = output.split('\n').length;

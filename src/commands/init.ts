@@ -229,6 +229,7 @@ export async function initCommand(options: InitOptions) {
   const TASK_SKILLS_GEN = display.add('Generating skills');
   const TASK_SKILLS_SEARCH = wantsSkills ? display.add('Searching community skills') : -1;
   display.start();
+  display.enableWaitingContent();
 
   try {
     // Phase A: Fingerprint
