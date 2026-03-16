@@ -16,6 +16,8 @@ import {
   POINTS_HAS_STRUCTURE,
 } from '../scoring/constants.js';
 import { refineSetup } from './refine.js';
+import { llmCall } from '../llm/index.js';
+import { stripMarkdownFences } from '../llm/utils.js';
 
 const MAX_REFINE_ITERATIONS = 2;
 
@@ -198,7 +200,7 @@ export async function scoreAndRefine(
     }
 
     const feedbackMessage = buildFeedbackMessage(issues);
-    const refined = await refineSetup(currentSetup, feedbackMessage, sessionHistory);
+    const refined = await refineSetupFast(currentSetup, feedbackMessage);
 
     if (!refined) {
       if (callbacks?.onStatus) callbacks.onStatus('Refinement failed, keeping current setup');
@@ -222,6 +224,28 @@ export async function scoreAndRefine(
   }
 
   return bestSetup;
+}
+
+async function refineSetupFast(
+  setup: Record<string, unknown>,
+  feedbackMessage: string,
+): Promise<Record<string, unknown> | null> {
+  const prompt = `Current setup:\n${JSON.stringify(setup, null, 2)}\n\n${feedbackMessage}\n\nReturn the complete updated AgentSetup JSON with only these fixes applied. Respond with ONLY the JSON.`;
+
+  try {
+    const raw = await llmCall({
+      system: 'You fix scoring issues in AI agent configuration files. Return only the corrected JSON — no explanations, no code fences.',
+      prompt,
+      maxTokens: 16000,
+    });
+
+    const cleaned = stripMarkdownFences(raw);
+    const jsonStart = cleaned.indexOf('{');
+    const jsonToParse = jsonStart !== -1 ? cleaned.slice(jsonStart) : cleaned;
+    return JSON.parse(jsonToParse);
+  } catch {
+    return null;
+  }
 }
 
 export async function runScoreRefineWithSpinner(

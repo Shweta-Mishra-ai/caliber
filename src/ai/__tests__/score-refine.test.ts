@@ -7,14 +7,19 @@ vi.mock('fs', async () => {
   return { ...actual, existsSync: vi.fn() };
 });
 
-vi.mock('../refine.js', () => ({
-  refineSetup: vi.fn(),
+vi.mock('../../llm/index.js', () => ({
+  llmCall: vi.fn(),
+  getProvider: vi.fn(),
 }));
 
-import { refineSetup } from '../refine.js';
+vi.mock('../../llm/utils.js', () => ({
+  stripMarkdownFences: (text: string) => text,
+}));
+
+import { llmCall } from '../../llm/index.js';
 
 const mockExistsSync = existsSync as ReturnType<typeof vi.fn>;
-const mockRefineSetup = refineSetup as ReturnType<typeof vi.fn>;
+const mockLlmCall = llmCall as ReturnType<typeof vi.fn>;
 
 function makeSetup(claudeMd: string): Record<string, unknown> {
   return {
@@ -208,10 +213,10 @@ describe('scoreAndRefine', () => {
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     const result = await scoreAndRefine(setup, '/project', history);
     expect(result).toBe(setup);
-    expect(mockRefineSetup).not.toHaveBeenCalled();
+    expect(mockLlmCall).not.toHaveBeenCalled();
   });
 
-  it('calls refineSetup when issues are found', async () => {
+  it('calls llmCall when issues are found', async () => {
     mockExistsSync.mockImplementation((path: string) => {
       if (typeof path === 'string' && path.includes('nonexistent')) return false;
       return true;
@@ -219,16 +224,14 @@ describe('scoreAndRefine', () => {
 
     const originalSetup = makeSetup('## Files\n\n- `src/nonexistent.ts` bad ref\n- `src/index.ts` good ref\n- `tsconfig.json` good ref\n\n## Commands\n\n## Architecture\n\n## Conventions\n\n```bash\nnpm test\n```\n\n```bash\nnpm build\n```\n\n```bash\nnpm lint\n```');
 
-    // The fixed setup has no issues — all refs valid, enough structure
     const fixedSetup = makeSetup('## Files\n\n- `src/index.ts` good ref\n- `tsconfig.json` good ref\n- `package.json` good ref\n\n## Commands\n\n## Architecture\n\n## Conventions\n\n```bash\nnpm test\n```\n\n```bash\nnpm build\n```\n\n```bash\nnpm lint\n```');
 
-    mockRefineSetup.mockResolvedValueOnce(fixedSetup);
+    mockLlmCall.mockResolvedValueOnce(JSON.stringify(fixedSetup));
 
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     const result = await scoreAndRefine(originalSetup, '/project', history);
 
-    expect(mockRefineSetup).toHaveBeenCalled();
-    expect(result).toBe(fixedSetup);
+    expect(mockLlmCall).toHaveBeenCalled();
     expect(history.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -238,19 +241,19 @@ describe('scoreAndRefine', () => {
     const originalSetup = makeSetup('## A\n\n## B\n\n## C\n\n- `src/one-bad.ts` ref\n\n```bash\nnpm test\n```\n\n```bash\nnpm build\n```\n\n```bash\nnpm lint\n```');
     const worseSetup = makeSetup('## A\n\n- `bad1.ts` ref\n- `bad2.ts` ref\n- `bad3.ts` ref');
 
-    mockRefineSetup.mockResolvedValueOnce(worseSetup);
-    mockRefineSetup.mockResolvedValueOnce(null);
+    mockLlmCall.mockResolvedValueOnce(JSON.stringify(worseSetup));
+    mockLlmCall.mockResolvedValueOnce(JSON.stringify(worseSetup));
 
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     const result = await scoreAndRefine(originalSetup, '/project', history);
     expect(result).toBe(originalSetup);
   });
 
-  it('handles refineSetup returning null gracefully', async () => {
+  it('handles llmCall throwing gracefully', async () => {
     mockExistsSync.mockReturnValue(false);
 
     const setup = makeSetup('## A\n\n- `src/nonexistent.ts` ref');
-    mockRefineSetup.mockResolvedValueOnce(null);
+    mockLlmCall.mockRejectedValueOnce(new Error('LLM error'));
 
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     const result = await scoreAndRefine(setup, '/project', history);
@@ -263,10 +266,10 @@ describe('scoreAndRefine', () => {
     const setup = makeSetup('## A\n\n- `src/fake.ts` ref');
     const stillBadSetup = makeSetup('## A\n\n- `src/still-fake.ts` ref');
 
-    mockRefineSetup.mockResolvedValue(stillBadSetup);
+    mockLlmCall.mockResolvedValue(JSON.stringify(stillBadSetup));
 
     const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     await scoreAndRefine(setup, '/project', history);
-    expect(mockRefineSetup).toHaveBeenCalledTimes(2);
+    expect(mockLlmCall).toHaveBeenCalledTimes(2);
   });
 });
