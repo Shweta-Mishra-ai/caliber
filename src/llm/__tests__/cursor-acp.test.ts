@@ -61,7 +61,7 @@ describe('CursorAcpProvider', () => {
     const result = await provider.call({ system: 'You are a helper.', prompt: 'Say hello.' });
 
     expect(result).toBe('Hello! World.');
-    expect(spawn).toHaveBeenCalledWith('agent', ['--model', 'sonnet-4.6', '--mode', 'ask', 'acp'], expect.any(Object));
+    expect(spawn).toHaveBeenCalledWith('agent', ['--model', 'sonnet-4.6', 'acp'], expect.any(Object));
     provider.shutdown();
   });
 
@@ -72,7 +72,7 @@ describe('CursorAcpProvider', () => {
     const provider = new CursorAcpProvider({ provider: 'cursor', model: 'sonnet-4.6' });
     await provider.call({ system: 'S', prompt: 'P' });
 
-    expect(spawn).toHaveBeenCalledWith('agent', ['--api-key', 'test-key', '--model', 'sonnet-4.6', '--mode', 'ask', 'acp'], expect.any(Object));
+    expect(spawn).toHaveBeenCalledWith('agent', ['--api-key', 'test-key', '--model', 'sonnet-4.6', 'acp'], expect.any(Object));
     provider.shutdown();
   });
 
@@ -95,8 +95,8 @@ describe('CursorAcpProvider', () => {
     await provider.call({ system: 'S', prompt: 'P2', model: 'gpt-5.3-codex-fast' });
 
     expect(spawn).toHaveBeenCalledTimes(2);
-    expect(spawn).toHaveBeenNthCalledWith(1, 'agent', ['--model', 'sonnet-4.6', '--mode', 'ask', 'acp'], expect.any(Object));
-    expect(spawn).toHaveBeenNthCalledWith(2, 'agent', ['--model', 'gpt-5.3-codex-fast', '--mode', 'ask', 'acp'], expect.any(Object));
+    expect(spawn).toHaveBeenNthCalledWith(1, 'agent', ['--model', 'sonnet-4.6', 'acp'], expect.any(Object));
+    expect(spawn).toHaveBeenNthCalledWith(2, 'agent', ['--model', 'gpt-5.3-codex-fast', 'acp'], expect.any(Object));
     provider.shutdown();
   });
 
@@ -106,7 +106,7 @@ describe('CursorAcpProvider', () => {
     const provider = new CursorAcpProvider({ provider: 'cursor', model: 'auto' });
     await provider.call({ system: 'S', prompt: 'P' });
 
-    expect(spawn).toHaveBeenCalledWith('agent', ['--mode', 'ask', 'acp'], expect.any(Object));
+    expect(spawn).toHaveBeenCalledWith('agent', ['acp'], expect.any(Object));
     provider.shutdown();
   });
 

@@ -105,7 +105,7 @@ export class CursorAcpProvider implements LLMProvider {
   }
 
   private async connect(model: string): Promise<void> {
-    const args = ['--mode', 'ask', 'acp'];
+    const args = ['acp'];
     if (model && model !== 'auto' && model !== 'default') {
       args.unshift('--model', model);
     }
