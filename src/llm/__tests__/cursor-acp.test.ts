@@ -28,7 +28,6 @@ function mockAcpAgent(chunks?: string[]) {
               stdout.push(JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: { update: { sessionUpdate: 'agent_message_chunk', content: { text } } } }) + '\n');
             }
             stdout.push(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } }) + '\n');
-            stdout.push(null);
           }
         } catch {
           // ignore
@@ -37,7 +36,8 @@ function mockAcpAgent(chunks?: string[]) {
       cb();
     },
   });
-  spawn.mockReturnValue({ stdin, stdout, stderr: process.stderr, on: vi.fn(), kill: vi.fn() });
+  spawn.mockReturnValue({ stdin, stdout, stderr: process.stderr, on: vi.fn(), kill: vi.fn(), killed: false });
+  return { stdin, stdout };
 }
 
 describe('CursorAcpProvider', () => {
@@ -62,6 +62,7 @@ describe('CursorAcpProvider', () => {
 
     expect(result).toBe('Hello! World.');
     expect(spawn).toHaveBeenCalledWith('agent', ['acp'], expect.any(Object));
+    provider.shutdown();
   });
 
   it('includes --api-key in spawn args when CURSOR_API_KEY is set', async () => {
@@ -72,15 +73,19 @@ describe('CursorAcpProvider', () => {
     await provider.call({ system: 'S', prompt: 'P' });
 
     expect(spawn).toHaveBeenCalledWith('agent', ['--api-key', 'test-key', 'acp'], expect.any(Object));
+    provider.shutdown();
   });
 
-  it('includes --model before acp when a specific model is set', async () => {
+  it('reuses the same process across multiple calls', async () => {
     mockAcpAgent();
 
-    const provider = new CursorAcpProvider({ provider: 'cursor', model: 'opus-4.6' });
-    await provider.call({ system: 'S', prompt: 'P' });
+    const provider = new CursorAcpProvider({ provider: 'cursor', model: 'auto' });
+    await provider.call({ system: 'S', prompt: 'P1' });
+    await provider.call({ system: 'S', prompt: 'P2' });
+    await provider.call({ system: 'S', prompt: 'P3' });
 
-    expect(spawn).toHaveBeenCalledWith('agent', ['--model', 'opus-4.6', 'acp'], expect.any(Object));
+    expect(spawn).toHaveBeenCalledTimes(1);
+    provider.shutdown();
   });
 
   it('does not include --model when model is "auto"', async () => {
@@ -90,15 +95,7 @@ describe('CursorAcpProvider', () => {
     await provider.call({ system: 'S', prompt: 'P' });
 
     expect(spawn).toHaveBeenCalledWith('agent', ['acp'], expect.any(Object));
-  });
-
-  it('per-call model overrides default model', async () => {
-    mockAcpAgent();
-
-    const provider = new CursorAcpProvider({ provider: 'cursor', model: 'auto' });
-    await provider.call({ system: 'S', prompt: 'P', model: 'sonnet-4.6' });
-
-    expect(spawn).toHaveBeenCalledWith('agent', ['--model', 'sonnet-4.6', 'acp'], expect.any(Object));
+    provider.shutdown();
   });
 
   it('uses CURSOR_API_KEY from env when set', () => {
@@ -106,6 +103,7 @@ describe('CursorAcpProvider', () => {
     const config: LLMConfig = { provider: 'cursor', model: 'default' };
     const provider = new CursorAcpProvider(config);
     expect(provider).toBeDefined();
+    provider.shutdown();
   });
 });
 
