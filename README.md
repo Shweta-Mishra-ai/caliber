@@ -6,6 +6,7 @@
   <a href="https://www.npmjs.com/package/@rely-ai/caliber"><img src="https://img.shields.io/npm/v/@rely-ai/caliber" alt="npm version"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@rely-ai/caliber" alt="license"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/@rely-ai/caliber" alt="node"></a>
+  <img src="https://img.shields.io/badge/caliber-89%2F100-green" alt="Caliber Score">
   <img src="https://img.shields.io/badge/Claude_Code-supported-blue" alt="Claude Code">
   <img src="https://img.shields.io/badge/Cursor-supported-blue" alt="Cursor">
   <img src="https://img.shields.io/badge/Codex-supported-blue" alt="Codex">
@@ -269,11 +270,15 @@ Scoring is fully local. Generation sends your project fingerprint (not source co
 
 After scoring your project, add a badge to your README:
 
-```markdown
 ![Caliber Score](https://img.shields.io/badge/caliber-94%2F100-brightgreen)
+
+Copy this markdown and replace `94` with your actual score:
+
+```
+![Caliber Score](https://img.shields.io/badge/caliber-SCORE%2F100-COLOR)
 ```
 
-Replace `94` with your actual score. Color guide: `brightgreen` (90+), `green` (70-89), `yellow` (40-69), `red` (<40).
+Color guide: `brightgreen` (90+), `green` (70-89), `yellow` (40-69), `red` (<40).
 
 ## LLM Providers
 
