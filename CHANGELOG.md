@@ -1,3 +1,9 @@
+## v1.25.1 (2026-03-19)
+
+### Bug Fixes
+
+- **learn**: stale lock recovery, finalize visibility, learnings closed-loop
+
 ## v1.25.0 (2026-03-19)
 
 ### Features
