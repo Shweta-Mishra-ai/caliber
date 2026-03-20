@@ -5,6 +5,7 @@ import { writeCodexConfig } from './codex/index.js';
 import { writeGithubCopilotConfig } from './github-copilot/index.js';
 import { createBackup, restoreBackup } from './backup.js';
 import { ensureBuiltinSkills } from '../lib/builtin-skills.js';
+import { MANIFEST_FILE } from '../constants.js';
 import {
   readManifest,
   writeManifest,
@@ -104,7 +105,6 @@ export function undoSetup(): { restored: string[]; removed: string[] } {
     }
   }
 
-  const { MANIFEST_FILE } = require('../constants.js');
   if (fs.existsSync(MANIFEST_FILE)) {
     fs.unlinkSync(MANIFEST_FILE);
   }
