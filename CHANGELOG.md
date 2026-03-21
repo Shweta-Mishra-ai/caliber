@@ -1,3 +1,17 @@
+## v1.29.0 (2026-03-21)
+
+### Features
+
+- scale video to 1080p, optimize encoding for smooth playback
+- redesign playbooks scene as 7.5s terminal build log
+- use real SVG logos and add GitHub git-sync messaging
+- enhance video design to match LP — terminal frames, glow, categories
+- redesign product video — 20s, 2x bigger text, key messages
+
+### Bug Fixes
+
+- use reduced-motion GIF for README header, replace MP4 video tag
+
 ## v1.28.0 (2026-03-20)
 
 ### Features
