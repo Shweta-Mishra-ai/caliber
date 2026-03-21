@@ -1,7 +1,7 @@
 import { AbsoluteFill, Sequence, useCurrentFrame, interpolate } from "remotion";
 import { ScoreTransition } from "./components/ScoreTransition";
 import { EcosystemHub } from "./components/EcosystemHub";
-import { SkillsFlow } from "./components/SkillsFlow";
+import { PlaybooksScene } from "./components/PlaybooksScene";
 import { SyncAnimation } from "./components/SyncAnimation";
 import { ROIStats } from "./components/ROIStats";
 import { theme } from "./components/theme";
@@ -25,13 +25,13 @@ const CrossFade: React.FC<{ children: React.ReactNode; from: number; duration: n
   return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
 };
 
-// 20 seconds = 600 frames @ 30fps
-// Scene breakdown (each scene gets 4 seconds = 120 frames):
-//   0-4s   (0-120):   EcosystemHub — Bring your own AI
-//   4-8s   (120-240): ScoreTransition — Fully runs on your setup
-//   8-12s  (240-360): SkillsFlow — Best skills & MCPs
-//   12-16s (360-480): SyncAnimation — Continuous sync
-//   16-20s (480-600): ROI + CTA — Max velocity, min cost
+// 21 seconds = 630 frames @ 30fps
+// Scene breakdown:
+//   0-3.5s    (0-105):     EcosystemHub — Bring your own AI
+//   3.5-7s    (105-210):   ScoreTransition — Fully runs on your setup
+//   7-14.5s   (210-435):   PlaybooksScene — Best playbooks (7.5s hero scene)
+//   14.5-18s  (435-540):   SyncAnimation — Continuous git sync
+//   18-21s    (540-630):   ROI + CTA — Max velocity, min cost
 
 export const CaliberDemo: React.FC = () => {
   return (
@@ -45,37 +45,37 @@ export const CaliberDemo: React.FC = () => {
         }}
       />
 
-      {/* 0-4s: Ecosystem hub — Bring your own AI */}
-      <CrossFade from={0} duration={120}>
-        <Sequence from={0} durationInFrames={120}>
+      {/* 0-3.5s: Ecosystem hub */}
+      <CrossFade from={0} duration={105}>
+        <Sequence from={0} durationInFrames={105}>
           <EcosystemHub />
         </Sequence>
       </CrossFade>
 
-      {/* 4-8s: Score — Fully runs on your setup */}
-      <CrossFade from={120} duration={120}>
-        <Sequence from={120} durationInFrames={120}>
+      {/* 3.5-7s: Score */}
+      <CrossFade from={105} duration={105}>
+        <Sequence from={105} durationInFrames={105}>
           <ScoreTransition />
         </Sequence>
       </CrossFade>
 
-      {/* 8-12s: Skills — Best skills & MCPs */}
-      <CrossFade from={240} duration={120}>
-        <Sequence from={240} durationInFrames={120}>
-          <SkillsFlow />
+      {/* 7-14.5s: Playbooks — the hero scene (7.5s = 225 frames) */}
+      <CrossFade from={210} duration={225}>
+        <Sequence from={210} durationInFrames={225}>
+          <PlaybooksScene />
         </Sequence>
       </CrossFade>
 
-      {/* 12-16s: Continuous sync */}
-      <CrossFade from={360} duration={120}>
-        <Sequence from={360} durationInFrames={120}>
+      {/* 14.5-18s: Continuous git sync */}
+      <CrossFade from={435} duration={105}>
+        <Sequence from={435} durationInFrames={105}>
           <SyncAnimation />
         </Sequence>
       </CrossFade>
 
-      {/* 16-20s: ROI + CTA */}
-      <CrossFade from={480} duration={120}>
-        <Sequence from={480} durationInFrames={120}>
+      {/* 18-21s: ROI + CTA */}
+      <CrossFade from={540} duration={90}>
+        <Sequence from={540} durationInFrames={90}>
           <ROIStats />
         </Sequence>
       </CrossFade>
