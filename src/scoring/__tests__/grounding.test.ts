@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'fs';
+import { execSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { checkGrounding } from '../checks/grounding.js';
+import { collectProjectStructure } from '../utils.js';
 
 describe('checkGrounding', () => {
   let dir: string;
@@ -73,5 +75,66 @@ describe('checkGrounding', () => {
     const groundingCheck = checks.find(c => c.id === 'project_grounding');
     expect(groundingCheck).toBeDefined();
     expect(groundingCheck?.earnedPoints).toBe(0);
+  });
+});
+
+describe('collectProjectStructure respects .gitignore', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'caliber-gitignore-'));
+    execSync('git init', { cwd: dir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: dir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: dir, stdio: 'pipe' });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('excludes gitignored directories', () => {
+    mkdirSync(join(dir, 'src'));
+    mkdirSync(join(dir, '.idea'));
+    mkdirSync(join(dir, '.vscode'));
+    writeFileSync(join(dir, 'src', 'index.ts'), 'export {}');
+    writeFileSync(join(dir, '.idea', 'workspace.xml'), '<xml/>');
+    writeFileSync(join(dir, '.vscode', 'settings.json'), '{}');
+    writeFileSync(join(dir, '.gitignore'), '.idea/\n.vscode/\n');
+
+    // Stage a tracked file so git ls-files returns something
+    execSync('git add src .gitignore', { cwd: dir, stdio: 'pipe' });
+
+    const structure = collectProjectStructure(dir);
+    expect(structure.dirs).toContain('src');
+    expect(structure.dirs).not.toContain('.idea');
+    expect(structure.dirs).not.toContain('.vscode');
+  });
+
+  it('includes non-gitignored directories', () => {
+    mkdirSync(join(dir, 'src'));
+    mkdirSync(join(dir, 'scripts'));
+    writeFileSync(join(dir, 'src', 'index.ts'), 'export {}');
+    writeFileSync(join(dir, 'scripts', 'build.sh'), '#!/bin/bash');
+
+    execSync('git add .', { cwd: dir, stdio: 'pipe' });
+
+    const structure = collectProjectStructure(dir);
+    expect(structure.dirs).toContain('src');
+    expect(structure.dirs).toContain('scripts');
+  });
+
+  it('falls back to including all dirs when not a git repo', () => {
+    // Remove the .git directory to simulate non-git context
+    rmSync(join(dir, '.git'), { recursive: true, force: true });
+
+    mkdirSync(join(dir, 'src'));
+    mkdirSync(join(dir, '.idea'));
+    writeFileSync(join(dir, 'src', 'index.ts'), 'export {}');
+    writeFileSync(join(dir, '.idea', 'workspace.xml'), '<xml/>');
+
+    const structure = collectProjectStructure(dir);
+    expect(structure.dirs).toContain('src');
+    // Without git, .idea is not filtered (only hardcoded IGNORED_DIRS apply)
+    expect(structure.dirs).toContain('.idea');
   });
 });

@@ -104,6 +104,38 @@ describe('computeLocalScore target filtering', () => {
     expect(checkIds).not.toContain('no_duplicate_content');
   });
 
+  it('excludes skills checks when target is [cursor]', () => {
+    const result = computeLocalScore(dir, ['cursor']);
+    const checkIds = result.checks.map((c) => c.id);
+
+    expect(checkIds).not.toContain('skills_exist');
+    expect(checkIds).not.toContain('open_skills_format');
+  });
+
+  it('excludes skills checks when target is [github-copilot]', () => {
+    const result = computeLocalScore(dir, ['github-copilot']);
+    const checkIds = result.checks.map((c) => c.id);
+
+    expect(checkIds).not.toContain('skills_exist');
+    expect(checkIds).not.toContain('open_skills_format');
+  });
+
+  it('includes skills checks when target is [claude]', () => {
+    const result = computeLocalScore(dir, ['claude']);
+    const checkIds = result.checks.map((c) => c.id);
+
+    expect(checkIds).toContain('skills_exist');
+    expect(checkIds).toContain('open_skills_format');
+  });
+
+  it('includes skills checks when target is [codex]', () => {
+    const result = computeLocalScore(dir, ['codex']);
+    const checkIds = result.checks.map((c) => c.id);
+
+    expect(checkIds).toContain('skills_exist');
+    expect(checkIds).toContain('open_skills_format');
+  });
+
   it('includes all checks when target is [claude, cursor]', () => {
     const result = computeLocalScore(dir, ['claude', 'cursor']);
     const checkIds = result.checks.map((c) => c.id);

@@ -7,7 +7,7 @@ import { checkAccuracy } from './checks/accuracy.js';
 import { checkFreshness } from './checks/freshness.js';
 import { checkBonus } from './checks/bonus.js';
 import { checkSources } from './checks/sources.js';
-import { computeGrade, CURSOR_ONLY_CHECKS, CLAUDE_ONLY_CHECKS, CODEX_ONLY_CHECKS, COPILOT_ONLY_CHECKS, BOTH_ONLY_CHECKS, NON_CODEX_CHECKS } from './constants.js';
+import { computeGrade, CURSOR_ONLY_CHECKS, CLAUDE_ONLY_CHECKS, CODEX_ONLY_CHECKS, COPILOT_ONLY_CHECKS, BOTH_ONLY_CHECKS, NON_CODEX_CHECKS, CLAUDE_OR_CODEX_CHECKS } from './constants.js';
 import { getDismissedIds } from './dismissed.js';
 
 export type TargetAgent = ('claude' | 'cursor' | 'codex' | 'github-copilot')[];
@@ -69,6 +69,7 @@ function filterChecksForTarget(checks: Check[], target: TargetAgent): Check[] {
     if (COPILOT_ONLY_CHECKS.has(c.id)) return target.includes('github-copilot');
     if (BOTH_ONLY_CHECKS.has(c.id)) return target.includes('claude') && target.includes('cursor');
     if (NON_CODEX_CHECKS.has(c.id)) return !target.includes('codex');
+    if (CLAUDE_OR_CODEX_CHECKS.has(c.id)) return target.includes('claude') || target.includes('codex');
     return true;
   });
 }

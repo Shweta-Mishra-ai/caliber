@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { join, relative } from 'path';
 
 export function readFileOrNull(filePath: string): string | null {
@@ -38,17 +39,71 @@ export interface ProjectStructure {
 }
 
 /**
+ * Check if a directory is inside a git repo.
+ * Returns false if git is unavailable or not a repo.
+ */
+function isGitRepo(dir: string): boolean {
+  try {
+    execFileSync('git', ['rev-parse', '--git-dir'], {
+      cwd: dir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Batch-check which paths are gitignored.
+ * Returns the set of relative paths that are ignored, or null if not a git repo.
+ */
+function checkGitIgnored(dir: string, paths: string[]): Set<string> | null {
+  if (paths.length === 0) return new Set();
+  try {
+    const result = execFileSync(
+      'git', ['check-ignore', ...paths],
+      { cwd: dir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    return new Set(result.split('\n').map(l => l.trim()).filter(Boolean));
+  } catch (err) {
+    // git check-ignore exits 1 when no paths are ignored (not an error)
+    if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 1) {
+      return new Set<string>();
+    }
+    return null;
+  }
+}
+
+/**
  * Scan the project filesystem up to 2 levels deep.
  * Returns directory and file names relative to root.
+ * Respects .gitignore when inside a git repository.
  */
 export function collectProjectStructure(dir: string, maxDepth = 2): ProjectStructure {
   const dirs: string[] = [];
   const files: string[] = [];
+  const useGit = isGitRepo(dir);
 
   function walk(currentDir: string, depth: number): void {
     if (depth > maxDepth) return;
     try {
       const entries = readdirSync(currentDir, { withFileTypes: true });
+
+      // Collect directory names at this level for batch gitignore check
+      const dirEntries: { name: string; rel: string }[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const name = entry.name;
+        if (IGNORED_DIRS.has(name)) continue;
+        if (name.startsWith('.') && IGNORED_DIRS.has(name)) continue;
+        dirEntries.push({ name, rel: relative(dir, join(currentDir, name)) });
+      }
+
+      // Batch check gitignored dirs in a single git call per level
+      const gitIgnored = useGit
+        ? checkGitIgnored(dir, dirEntries.map(d => d.rel))
+        : null;
+
       for (const entry of entries) {
         const name = entry.name;
         if (name.startsWith('.') && IGNORED_DIRS.has(name)) continue;
@@ -58,6 +113,7 @@ export function collectProjectStructure(dir: string, maxDepth = 2): ProjectStruc
 
         if (entry.isDirectory()) {
           if (IGNORED_DIRS.has(name)) continue;
+          if (gitIgnored?.has(rel)) continue;
           dirs.push(rel);
           walk(join(currentDir, name), depth + 1);
         } else if (entry.isFile()) {

@@ -160,6 +160,12 @@ export const NON_CODEX_CHECKS = new Set([
   'agents_md_exists',
 ]);
 
+/** Checks relevant only to Claude or Codex (skills live in .claude/skills/ or .agents/skills/). */
+export const CLAUDE_OR_CODEX_CHECKS = new Set([
+  'skills_exist',
+  'open_skills_format',
+]);
+
 // ── Grading ────────────────────────────────────────────────────────────
 export const GRADE_THRESHOLDS = [
   { minScore: 85, grade: 'A' },
