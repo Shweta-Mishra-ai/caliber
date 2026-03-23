@@ -33,7 +33,7 @@ import { validateModel } from '../llm/index.js';
 import { recordSession, formatROISummary, readROIStats, writeROIStats } from '../learner/roi.js';
 import type { LearningCostEntry, SessionROISummary } from '../learner/roi.js';
 import { matchLearningsToFailures, semanticMatchFallback, updateActivations, findStaleLearnings } from '../learner/attribution.js';
-import { PERSONAL_LEARNINGS_FILE, LEARNING_DIR, LEARNING_FINALIZE_LOG, LEARNING_LAST_ERROR_FILE } from '../constants.js';
+import { PERSONAL_LEARNINGS_FILE, getLearningDir, LEARNING_FINALIZE_LOG, LEARNING_LAST_ERROR_FILE } from '../constants.js';
 import {
   trackLearnSessionAnalyzed,
   trackLearnROISnapshot,
@@ -48,8 +48,8 @@ const INCREMENTAL_INTERVAL = 50;
 
 function writeFinalizeError(message: string): void {
   try {
-    const errorPath = path.join(LEARNING_DIR, LEARNING_LAST_ERROR_FILE);
-    if (!fs.existsSync(LEARNING_DIR)) fs.mkdirSync(LEARNING_DIR, { recursive: true });
+    const errorPath = path.join(getLearningDir(), LEARNING_LAST_ERROR_FILE);
+    if (!fs.existsSync(getLearningDir())) fs.mkdirSync(getLearningDir(), { recursive: true });
     fs.writeFileSync(errorPath, JSON.stringify({
       timestamp: new Date().toISOString(),
       error: message,
@@ -62,7 +62,7 @@ function writeFinalizeError(message: string): void {
 
 function readFinalizeError(): { timestamp: string; error: string } | null {
   try {
-    const errorPath = path.join(LEARNING_DIR, LEARNING_LAST_ERROR_FILE);
+    const errorPath = path.join(getLearningDir(), LEARNING_LAST_ERROR_FILE);
     if (!fs.existsSync(errorPath)) return null;
     return JSON.parse(fs.readFileSync(errorPath, 'utf-8'));
   } catch {
@@ -120,8 +120,8 @@ export async function learnObserveCommand(options: { failure?: boolean; prompt?:
         const { resolveCaliber } = await import('../lib/resolve-caliber.js');
         const bin = resolveCaliber();
         const { spawn } = await import('child_process');
-        const logPath = path.join(LEARNING_DIR, LEARNING_FINALIZE_LOG);
-        if (!fs.existsSync(LEARNING_DIR)) fs.mkdirSync(LEARNING_DIR, { recursive: true });
+        const logPath = path.join(getLearningDir(), LEARNING_FINALIZE_LOG);
+        if (!fs.existsSync(getLearningDir())) fs.mkdirSync(getLearningDir(), { recursive: true });
         const logFd = fs.openSync(logPath, 'a');
         spawn(bin, ['learn', 'finalize', '--auto', '--incremental'], {
           detached: true,
@@ -477,7 +477,7 @@ export async function learnStatusCommand() {
   if (lastError) {
     console.log(`Last error: ${chalk.red(lastError.error)}`);
     console.log(chalk.dim(`  at ${lastError.timestamp}`));
-    const logPath = path.join(LEARNING_DIR, LEARNING_FINALIZE_LOG);
+    const logPath = path.join(getLearningDir(), LEARNING_FINALIZE_LOG);
     if (fs.existsSync(logPath)) {
       console.log(chalk.dim(`  Full log: ${logPath}`));
     }
