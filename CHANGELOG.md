@@ -1,3 +1,9 @@
+## v1.29.5 (2026-03-23)
+
+### Bug Fixes
+
+- remove hardcoded user paths from hooks config (#81)
+
 ## v1.29.4 (2026-03-22)
 
 ### Bug Fixes
