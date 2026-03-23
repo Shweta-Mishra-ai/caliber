@@ -1,3 +1,9 @@
+## v1.29.7 (2026-03-23)
+
+### Bug Fixes
+
+- normalize LLM response and share learning data across worktrees
+
 ## v1.29.6 (2026-03-23)
 
 ### Bug Fixes
