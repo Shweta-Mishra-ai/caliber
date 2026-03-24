@@ -1,3 +1,9 @@
+## v1.30.1 (2026-03-24)
+
+### Bug Fixes
+
+- harden command injection, path traversal, and telemetry hashing
+
 ## v1.30.0 (2026-03-23)
 
 ### Features
