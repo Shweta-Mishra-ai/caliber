@@ -27,10 +27,6 @@ export function detectPlatforms(): PlatformDetection {
 }
 
 export function scanLocalState(dir: string): LocalItem[] {
-  // [FEATURE]: Pre-scan analysis to detect heavy data files.
-  // This prevents AI context bloat, token drain, and hallucinations.
-  checkDataFileBloat(dir);
-
   const items: LocalItem[] = [];
 
   // Claude: CLAUDE.md
@@ -76,7 +72,9 @@ export function scanLocalState(dir: string): LocalItem[] {
           });
         }
       }
-    } catch { /* ignore */ }
+    } catch (error) {
+      warnScanSkip('.mcp.json', error);
+    }
   }
 
   // Codex: AGENTS.md (when used as primary instructions)
@@ -107,7 +105,9 @@ export function scanLocalState(dir: string): LocalItem[] {
           });
         }
       }
-    } catch { /* ignore */ }
+    } catch (error) {
+      warnScanSkip('.agents/skills', error);
+    }
   }
 
   // Cursor: .cursorrules
@@ -153,7 +153,9 @@ export function scanLocalState(dir: string): LocalItem[] {
           });
         }
       }
-    } catch { /* ignore */ }
+    } catch (error) {
+      warnScanSkip('.cursor/skills', error);
+    }
   }
 
   // Cursor: .cursor/mcp.json mcpServers
@@ -172,7 +174,9 @@ export function scanLocalState(dir: string): LocalItem[] {
           });
         }
       }
-    } catch { /* ignore */ }
+    } catch (error) {
+      warnScanSkip('.cursor/mcp.json', error);
+    }
   }
 
   return items;
@@ -231,6 +235,11 @@ function hashJson(obj: unknown): string {
   return crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex');
 }
 
+function warnScanSkip(target: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`Warning: ${target} scan skipped (${message})`);
+}
+
 function getCursorConfigDir(): string {
   const home = os.homedir();
   if (process.platform === 'darwin') {
@@ -240,40 +249,4 @@ function getCursorConfigDir(): string {
     return path.join(home, 'AppData', 'Roaming', 'Cursor');
   }
   return path.join(home, '.config', 'Cursor');
-}
-
-/**
- * Pre-analyzes the directory for heavy data files (e.g., CSV, SQLite) that could
- * cause AI context bloat, token drain, or hallucinations if accidentally included.
- * Surfaces a non-blocking CLI warning to the developer.
- * * @param dir The root directory being scanned
- */
-function checkDataFileBloat(dir: string): void {
-  try {
-    const heavyExtensions = ['.csv', '.ipynb', '.sqlite', '.xlsx'];
-    const files = fs.readdirSync(dir);
-
-    for (const file of files) {
-      const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-
-      // Only evaluate files, ignore directories
-      if (stat.isFile()) {
-        const ext = path.extname(file).toLowerCase();
-        
-        if (heavyExtensions.includes(ext)) {
-          const sizeInMB = stat.size / (1024 * 1024);
-          const THRESHOLD_MB = 1; // 1MB limit for optimal context window
-          
-          if (sizeInMB > THRESHOLD_MB) {
-            // Using ANSI escape codes (\x1b[33m) to render professional yellow warnings
-            console.warn(`\x1b[33m⚠️ WARNING: Heavy data file detected - ${file} (${sizeInMB.toFixed(2)} MB).\x1b[0m`);
-            console.warn(`\x1b[33m   This will consume excessive AI tokens. Consider adding it to .gitignore or .caliberignore.\x1b[0m\n`);
-          }
-        }
-      }
-    }
-  } catch (e) { 
-    // Silently fail for permission issues to prevent blocking the main scanner process
-  }
 }
