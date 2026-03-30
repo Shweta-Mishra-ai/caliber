@@ -10,32 +10,35 @@
   <img src="https://img.shields.io/badge/Claude_Code-supported-blue" alt="Claude Code">
   <img src="https://img.shields.io/badge/Cursor-supported-blue" alt="Cursor">
   <img src="https://img.shields.io/badge/Codex-supported-blue" alt="Codex">
+  <img src="https://img.shields.io/badge/OpenCode-supported-blue" alt="OpenCode">
 </p>
 
 ---
 
-### Try it — zero install, zero commitment
+### Get started — one command, two seconds
 
 ```bash
-npx @rely-ai/caliber score
+npx @rely-ai/caliber bootstrap
 ```
 
-Score your AI agent config in 3 seconds. No API key. No changes to your code. Just a score.
+Your AI agent can now configure itself. No API key, no prompts, no wizard. Just tell your agent:
 
-> **Your code stays on your machine.** Scoring is 100% local — no LLM calls, no code sent anywhere. Generation uses your own AI subscription (Claude Code, Cursor) or your own API key (Anthropic, OpenAI, Vertex AI). Caliber never sees your code.
+> **Run /setup-caliber**
+
+It detects your stack, generates tailored configs, and sets up continuous sync — all from inside your normal workflow.
+
+> **Your code stays on your machine.** Bootstrap is 100% local. Generation uses your own AI subscription (Claude Code, Cursor) or your own API key (Anthropic, OpenAI, Vertex AI). Caliber never sees your code.
 
 ---
 
-Caliber keeps your AI agent configs in sync with your codebase — automatically. It works across **Claude Code**, **Cursor**, **OpenAI Codex**, and **GitHub Copilot**, updating all formats on every commit. One tool, all agents, always in sync.
-
-Install once, never think about agent configs again. Caliber fingerprints your project, generates tailored configs, and keeps them fresh as your code evolves.
+Caliber keeps your AI agent configs in sync with your codebase. One bootstrap command gives your agent the skills to set itself up — it fingerprints your project, generates tailored configs for **Claude Code**, **Cursor**, **OpenAI Codex**, and **OpenCode**, and installs hooks so configs stay fresh as your code evolves.
 
 ## Before / After
 
 Most repos start with a hand-written `CLAUDE.md` and nothing else. Here's what Caliber finds — and fixes:
 
 ```
-  Before                                    After caliber init
+  Before                                    After /setup-caliber
   ──────────────────────────────            ──────────────────────────────
 
   Agent Config Score    35 / 100            Agent Config Score    94 / 100
@@ -69,31 +72,28 @@ If your existing config scores **95+**, Caliber skips full regeneration and appl
 
 ## How It Works
 
-Caliber is not a one-time setup tool. It's continuous sync:
+Bootstrap installs agent skills. Your agent runs `/setup-caliber` to generate configs. From there, it's a loop:
 
 ```
-  caliber init
-       │
-       ▼
-  Install sync infrastructure
-  (pre-commit hook + agent skills)
-       │
-       ▼
-  Generate configs (optional)
-       │
-       ▼
-  ┌──────────────────────────────┐
-  │   You code. You commit.      │
-  │   Caliber syncs all agents.  │◄──── automatic on every commit
-  │                              │
-  │   CLAUDE.md ✓                │
-  │   .cursor/rules/ ✓           │
-  │   AGENTS.md ✓                │
-  │   copilot-instructions.md ✓  │
-  └──────────────────────────────┘
+  npx @rely-ai/caliber bootstrap       ← one-time, 2 seconds
+              │
+              ▼
+  agent runs /setup-caliber             ← agent handles everything
+              │
+              ▼
+  ┌──── configs generated ◄────────────┐
+  │           │                        │
+  │           ▼                        │
+  │     your code evolves              │
+  │     (new deps, renamed files,      │
+  │      changed architecture)         │
+  │           │                        │
+  │           ▼                        │
+  └──► caliber refresh ──────────────►─┘
+       (auto, on every commit)
 ```
 
-The pre-commit hook runs `caliber refresh` on every commit, updating all agent configs simultaneously. Your agents always have current context.
+Pre-commit hooks run the refresh loop automatically. New team members get nudged to bootstrap on their first session.
 
 ### What It Generates
 
@@ -113,9 +113,9 @@ The pre-commit hook runs `caliber refresh` on every commit, updating all agent c
 - `AGENTS.md` — Project context for Codex
 - `.agents/skills/*/SKILL.md` — Skills for Codex
 
-**GitHub Copilot**
-- `.github/copilot-instructions.md` — Repository-wide instructions for Copilot
-- `.github/instructions/*.instructions.md` — Path-specific instruction files
+**OpenCode**
+- `AGENTS.md` — Project context (shared with Codex when both are targeted)
+- `.opencode/skills/*/SKILL.md` — Skills for OpenCode
 
 ## Key Features
 
@@ -129,12 +129,13 @@ TypeScript, Python, Go, Rust, Java, Ruby, Terraform, and more. Language and fram
 <details>
 <summary><strong>Any AI Tool</strong></summary>
 
-Target a single platform or all three at once:
+`caliber bootstrap` auto-detects which agents you have installed. For manual control:
 ```bash
 caliber init --agent claude        # Claude Code only
 caliber init --agent cursor        # Cursor only
 caliber init --agent codex         # Codex only
-caliber init --agent all           # All three
+caliber init --agent opencode      # OpenCode only
+caliber init --agent all           # All platforms
 caliber init --agent claude,cursor # Comma-separated
 ```
 
@@ -189,59 +190,29 @@ Learned items are categorized by type — **[correction]**, **[gotcha]**, **[fix
 </details>
 
 <details>
-<summary><strong>Continuous Sync</strong></summary>
+<summary><strong>Auto-Refresh</strong></summary>
 
-Caliber keeps all agent configs in sync automatically:
+Keep configs in sync with your codebase automatically:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| **Git pre-commit** | Before each commit | Refreshes all agent configs and stages updated files |
-| **Agent instructions** | Before commit in Claude Code/Cursor | Agent announces "Caliber: syncing..." if hook isn't installed |
+| **Git pre-commit** | Before each commit | Refreshes docs and stages updated files |
 | **Claude Code session end** | End of each session | Runs `caliber refresh` and updates docs |
 | **Learning hooks** | During each session | Captures events for session learning |
-
-The pre-commit hook is installed automatically during `caliber init`. It uses the fast model (~$0.01/commit) and takes a few seconds.
 
 ```bash
 caliber hooks --install    # Enable refresh hooks
 caliber hooks --remove     # Disable refresh hooks
 ```
 
+The `refresh` command analyzes your git diff (committed, staged, and unstaged changes) and updates config files to reflect what changed.
+
 </details>
 
 <details>
-<summary><strong>Team Sync via GitHub Action</strong></summary>
+<summary><strong>Team Onboarding</strong></summary>
 
-For teams, add the Caliber GitHub Action for automatic sync across all developers:
-
-```yaml
-# .github/workflows/caliber-sync.yml
-name: Caliber Sync
-on:
-  schedule:
-    - cron: '0 3 * * 1-5'  # Nightly on weekdays
-  pull_request:
-    types: [opened, synchronize]
-  workflow_dispatch:
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: caliber-ai-org/ai-setup@v1
-        with:
-          mode: sync
-          auto-refresh: true
-          comment: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-This creates nightly PRs with refreshed configs and posts sync status on every PR. No developer needs to install Caliber locally — the Action handles team-wide sync.
-
-New team members can run `/setup-caliber` inside their coding agent (Claude Code or Cursor) to set up local hooks for instant sync on every commit.
+When Caliber is set up in a repo, it automatically nudges new team members to configure it on their machine. A lightweight session hook checks whether the pre-commit hook is installed and prompts setup if not — no manual coordination needed.
 
 </details>
 
@@ -251,6 +222,7 @@ New team members can run `/setup-caliber` inside their coding agent (Claude Code
 - **Automatic backups** — originals saved to `.caliber/backups/` before every write
 - **Score regression guard** — if a regeneration produces a lower score, changes are auto-reverted
 - **Full undo** — `caliber undo` restores everything to its previous state
+- **Clean uninstall** — `caliber uninstall` removes all Caliber resources (hooks, managed config blocks, skills, learnings) while preserving your own content
 - **Dry run** — preview changes with `--dry-run` before applying
 
 </details>
@@ -259,9 +231,10 @@ New team members can run `/setup-caliber` inside their coding agent (Claude Code
 
 | Command | Description |
 |---|---|
+| `caliber bootstrap` | Install agent skills — the fastest way to get started |
+| `caliber init` | Full setup wizard — analyze, generate, review, install hooks |
 | `caliber score` | Score config quality (deterministic, no LLM) |
 | `caliber score --compare <ref>` | Compare current score against a git ref |
-| `caliber init` | Set up continuous sync — install hooks, generate configs, install agent skills |
 | `caliber regenerate` | Re-analyze and regenerate configs (aliases: `regen`, `re`) |
 | `caliber refresh` | Update docs based on recent code changes |
 | `caliber skills` | Discover and install community skills |
@@ -269,6 +242,7 @@ New team members can run `/setup-caliber` inside their coding agent (Claude Code
 | `caliber hooks` | Manage auto-refresh hooks |
 | `caliber config` | Configure LLM provider, API key, and model |
 | `caliber status` | Show current setup status |
+| `caliber uninstall` | Remove all Caliber resources from a project |
 | `caliber undo` | Revert all changes made by Caliber |
 
 ## FAQ
@@ -283,9 +257,16 @@ No. Caliber shows you a diff of every proposed change. You accept, refine, or de
 <details>
 <summary><strong>Does it need an API key?</strong></summary>
 
-**Scoring:** No. `caliber score` runs 100% locally with no LLM.
+**Bootstrap & scoring:** No. Both run 100% locally with no LLM.
 
-**Generation:** Uses your existing Claude Code or Cursor subscription (no API key needed), or bring your own key for Anthropic, OpenAI, or Vertex AI.
+**Generation** (via `/setup-caliber` or `caliber init`): Uses your existing Claude Code or Cursor subscription (no API key needed), or bring your own key for Anthropic, OpenAI, or Vertex AI.
+
+</details>
+
+<details>
+<summary><strong>What's the difference between bootstrap and init?</strong></summary>
+
+`caliber bootstrap` installs agent skills in 2 seconds — your agent then runs `/setup-caliber` to handle the rest from inside your session. `caliber init` is the full interactive wizard for users who prefer a CLI-driven setup. Both end up in the same place.
 
 </details>
 
