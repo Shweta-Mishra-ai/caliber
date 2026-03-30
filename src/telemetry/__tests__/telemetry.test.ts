@@ -60,10 +60,10 @@ describe('telemetry', () => {
       expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
-    it('getGitEmailHash returns SHA-256 hash', async () => {
+    it('getGitEmailHash returns HMAC-SHA256 hash', async () => {
       const { getGitEmailHash } = await import('../config.js');
       const hash = getGitEmailHash();
-      const expected = crypto.createHash('sha256').update('test@example.com').digest('hex');
+      const expected = crypto.createHmac('sha256', 'caliber-telemetry-v1').update('test@example.com').digest('hex');
       expect(hash).toBe(expected);
     });
 
@@ -89,7 +89,7 @@ describe('telemetry', () => {
       expect(mockCapture).toHaveBeenCalledWith(
         expect.objectContaining({
           event: 'test_event',
-          properties: { foo: 'bar' },
+          properties: expect.objectContaining({ foo: 'bar' }),
         })
       );
     });
@@ -128,7 +128,7 @@ describe('telemetry', () => {
       expect(mockCapture).toHaveBeenCalledWith(
         expect.objectContaining({
           event: 'init_provider_selected',
-          properties: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+          properties: expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-4-6' }),
         })
       );
     });
@@ -141,7 +141,7 @@ describe('telemetry', () => {
       expect(mockCapture).toHaveBeenCalledWith(
         expect.objectContaining({
           event: 'score_computed',
-          properties: { score: 85, agent: ['claude'] },
+          properties: expect.objectContaining({ score: 85, agent: ['claude'] }),
         })
       );
     });

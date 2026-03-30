@@ -11,8 +11,7 @@ import { llmJsonCall } from '../llm/index.js';
 import { promptReviewMethod, openReview } from '../utils/review.js';
 import type { StageResult } from '../writers/staging.js';
 
-export type TargetAgent = ('claude' | 'cursor' | 'codex')[];
-export type HookChoice = 'claude' | 'precommit' | 'both' | 'skip';
+export type TargetAgent = ('claude' | 'cursor' | 'codex' | 'opencode' | 'github-copilot')[];
 type ReviewAction = 'accept' | 'refine' | 'decline';
 
 export function detectAgents(dir: string): TargetAgent {
@@ -20,6 +19,8 @@ export function detectAgents(dir: string): TargetAgent {
   if (fs.existsSync(`${dir}/.claude`)) agents.push('claude');
   if (fs.existsSync(`${dir}/.cursor`)) agents.push('cursor');
   if (fs.existsSync(`${dir}/.agents`) || fs.existsSync(`${dir}/AGENTS.md`)) agents.push('codex');
+  if (fs.existsSync(`${dir}/.opencode`)) agents.push('opencode');
+  if (fs.existsSync(`${dir}/.github/copilot-instructions.md`)) agents.push('github-copilot');
   return agents;
 }
 
@@ -28,6 +29,8 @@ export async function promptAgent(detected?: TargetAgent): Promise<TargetAgent> 
     { name: 'Claude Code', value: 'claude' as const, checked: detected?.includes('claude') ?? false },
     { name: 'Cursor', value: 'cursor' as const, checked: detected?.includes('cursor') ?? false },
     { name: 'Codex (OpenAI)', value: 'codex' as const, checked: detected?.includes('codex') ?? false },
+    { name: 'OpenCode', value: 'opencode' as const, checked: detected?.includes('opencode') ?? false },
+    { name: 'GitHub Copilot', value: 'github-copilot' as const, checked: detected?.includes('github-copilot') ?? false },
   ];
 
   const hasDefaults = detected && detected.length > 0;
@@ -44,23 +47,6 @@ export async function promptAgent(detected?: TargetAgent): Promise<TargetAgent> 
     },
   });
   return selected;
-}
-
-export async function promptHookType(targetAgent: TargetAgent): Promise<HookChoice> {
-  const choices: Array<{ name: string; value: HookChoice }> = [];
-  const hasClaude = targetAgent.includes('claude');
-
-  choices.push({ name: 'Git pre-commit hook — refresh before each commit (recommended)', value: 'precommit' });
-  if (hasClaude) {
-    choices.push({ name: 'Claude Code hook — auto-refresh on session end', value: 'claude' });
-    choices.push({ name: 'Both (pre-commit + Claude Code)', value: 'both' });
-  }
-  choices.push({ name: 'Skip for now', value: 'skip' });
-
-  return select({
-    message: 'Keep your AI docs & skills in sync as your code evolves?',
-    choices,
-  });
 }
 
 export async function promptLearnInstall(targetAgent: TargetAgent): Promise<boolean> {
@@ -125,7 +111,7 @@ export async function classifyRefineIntent(message: string): Promise<boolean> {
   const fastModel = getFastModel();
   try {
     const result = await llmJsonCall<{ valid: boolean }>({
-      system: `You classify whether a user message is a valid request to modify AI agent config files (CLAUDE.md, .cursorrules, skills).
+      system: `You classify whether a user message is a valid request to modify AI agent config files (CLAUDE.md, .cursorrules, copilot-instructions.md, skills).
 Valid: requests to add, remove, change, or restructure config content. Examples: "add testing commands", "remove the terraform section", "make CLAUDE.md shorter".
 Invalid: questions, requests to show/display something, general chat, or anything that isn't a concrete config change.
 Return {"valid": true} or {"valid": false}. Nothing else.`,
@@ -159,11 +145,11 @@ export async function refineLoop(
     if (!isValid) {
       console.log(chalk.dim('  This doesn\'t look like a config change request.'));
       console.log(chalk.dim('  Describe what to add, remove, or modify in your configs.'));
-      console.log(chalk.dim('  Type "done" to accept the current setup.\n'));
+      console.log(chalk.dim('  Type "done" to accept the current config.\n'));
       continue;
     }
 
-    const refineSpinner = ora('Refining setup...').start();
+    const refineSpinner = ora('Refining config...').start();
     const refineMessages = new SpinnerMessages(refineSpinner, REFINE_MESSAGES);
     refineMessages.start();
 
@@ -178,12 +164,12 @@ export async function refineLoop(
         role: 'assistant',
         content: summarizeSetup('Applied changes', refined),
       });
-      refineSpinner.succeed('Setup updated');
+      refineSpinner.succeed('Config updated');
       printSummary(refined);
       console.log(chalk.dim('Type "done" to accept, or describe more changes.'));
     } else {
       refineSpinner.fail('Refinement failed — could not parse AI response.');
-      console.log(chalk.dim('Try rephrasing your request, or type "done" to keep the current setup.'));
+      console.log(chalk.dim('Try rephrasing your request, or type "done" to keep the current config.'));
     }
   }
 }

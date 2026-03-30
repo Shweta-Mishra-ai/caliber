@@ -1,98 +1,101 @@
-# CLAUDE.md — Caliber
+# Caliber
 
 ## What Is This
 
-`@rely-ai/caliber` — CLI that fingerprints projects and generates AI agent configs (`CLAUDE.md`, `.cursor/rules/`, `AGENTS.md`, skills). Supports Anthropic (`@anthropic-ai/sdk`), OpenAI (`openai`), Google Vertex AI (`@anthropic-ai/vertex-sdk`, `google-auth-library`), any OpenAI-compatible endpoint, Claude Code CLI (no API key), and Cursor ACP (no API key).
+`@rely-ai/caliber` — CLI that keeps AI agent configs in sync with your codebase, automatically. Generates and continuously refreshes `CLAUDE.md`, `.cursor/rules/`, `AGENTS.md`, `.github/copilot-instructions.md`, and skills across Claude Code, Cursor, Codex, and GitHub Copilot. Supports Anthropic, OpenAI, Google Vertex AI, OpenAI-compatible endpoints, Claude Code CLI, and Cursor ACP.
 
 ## Commands
 
 ```bash
-npm run build          # tsup → dist/
-npm run dev            # tsup --watch
-npm run test           # Vitest run
-npm run test:watch     # Vitest watch
-npm run test:coverage  # v8 coverage
-npx tsc --noEmit       # type-check only
-npx vitest run src/scoring/__tests__/accuracy.test.ts  # single file
+npm run build        # tsup → dist/
+npm run dev          # watch mode
+npm run test         # vitest run
+npm run lint         # eslint src/
+npx tsc --noEmit     # type check
+npx vitest run src/scoring/__tests__/accuracy.test.ts  # single test
 ```
 
 ## Architecture
 
-**Entry**: `src/bin.ts` → `src/cli.ts` (Commander.js)
+**Entry**: `src/bin.ts` → `src/cli.ts` (Commander.js) · **Config**: `tsconfig.json` · `tsup.config.ts` · `vitest.config.ts` · `eslint.config.js` · `.prettierrc`
 
-**LLM** (`src/llm/`): `types.ts` (interface, `isSeatBased()`) · `config.ts` (`DEFAULT_MODELS`, `DEFAULT_FAST_MODELS`, `MODEL_CONTEXT_WINDOWS`, `getMaxPromptTokens`, `~/.caliber/config.json`) · `anthropic.ts` · `vertex.ts` · `openai-compat.ts` · `claude-cli.ts` (`claude -p`) · `cursor-acp.ts` (headless `agent --print`) · `seat-based-errors.ts` (shared error parsing) · `utils.ts` (`extractJson`, `estimateTokens`) · `index.ts` (`llmCall`, `llmJsonCall`, retry/backoff via `TRANSIENT_ERRORS`)
+**Commands** (`src/commands/`): `init.ts` · `score.ts` · `refresh.ts` · `regenerate.ts` · `config.ts` · `hooks.ts` · `insights.ts` · `learn.ts` · `recommend.ts` · `sources.ts` · `publish.ts` · `undo.ts` · `status.ts` · Helpers: `init-helpers.ts` · `init-prompts.ts` · `init-display.ts` · `setup-files.ts` · `interactive-provider-setup.ts`
 
-**AI** (`src/ai/`): `generate.ts` (streaming init) · `refine.ts` (chat refinement) · `refresh.ts` (diff-based updates) · `learn.ts` (session analysis) · `detect.ts` (LLM framework detection) · `prompts.ts` (all system prompts) · `score-refine.ts` (auto-fix scoring issues)
+**LLM** (`src/llm/`): `anthropic.ts` · `vertex.ts` · `openai-compat.ts` · `cursor-acp.ts` · `claude-cli.ts` · `types.ts` · `config.ts` · `utils.ts` · `usage.ts` · `model-recovery.ts` · `seat-based-errors.ts` · `index.ts`
 
-**Commands** (`src/commands/`): `init.ts` · `regenerate.ts` (alias `regen`/`re`) · `status.ts` · `undo.ts` · `config.ts` · `score.ts` · `refresh.ts` · `hooks.ts` · `learn.ts` · `recommend.ts`
+**AI** (`src/ai/`): `generate.ts` · `refine.ts` · `refresh.ts` · `detect.ts` · `learn.ts` · `score-refine.ts` · `prompts.ts` · `stream-parser.ts` · `index.ts`
 
-**Fingerprint** (`src/fingerprint/`): `git.ts` · `file-tree.ts` · `existing-config.ts` · `code-analysis.ts` · `cache.ts` (`.caliber/cache/fingerprint.json`) · `index.ts` (orchestrates + LLM enrichment + caching)
+**Fingerprint** (`src/fingerprint/`): `index.ts` · `file-tree.ts` · `code-analysis.ts` · `existing-config.ts` · `sources.ts` · `git.ts` · `cache.ts`
 
-**Writers** (`src/writers/`): `claude/index.ts` · `cursor/index.ts` · `codex/index.ts` · `staging.ts` (buffer before confirm) · `manifest.ts` (`.caliber/manifest.json`) · `backup.ts` (`.caliber/backups/`) · `refresh.ts`
+**Scoring** (`src/scoring/`): `index.ts` · `display.ts` · `constants.ts` · `utils.ts` · `history.ts` · `dismissed.ts` · Checks (`src/scoring/checks/`): `existence.ts` · `quality.ts` · `grounding.ts` · `accuracy.ts` · `freshness.ts` · `bonus.ts` · `sources.ts`
 
-**Scoring** (`src/scoring/`): Deterministic, no LLM. Checks in `src/scoring/checks/` — `existence.ts` · `quality.ts` · `grounding.ts` · `accuracy.ts` · `freshness.ts` · `bonus.ts`. Constants in `src/scoring/constants.ts`. Run: `caliber score`.
+**Writers** (`src/writers/`): `index.ts` · `claude/index.ts` · `cursor/index.ts` · `codex/index.ts` · `github-copilot/index.ts` · `refresh.ts` · `staging.ts` · `backup.ts` · `manifest.ts` · `pre-commit-block.ts`
 
-**Learner** (`src/learner/`): `storage.ts` (events → `.caliber/learning/`) · `writer.ts` (writes `CALIBER_LEARNINGS.md`) · `stdin.ts`. Finalize: `caliber learn finalize`.
+**Scanner** (`src/scanner/`): `index.ts` — detects local MCP servers, rules, and skills across platforms
 
-**Scanner** (`src/scanner/index.ts`): `detectPlatforms()` · `scanLocalState()` · `compareState()`
+**Lib** (`src/lib/`): `hooks.ts` · `learning-hooks.ts` · `state.ts` · `resolve-caliber.ts` · `builtin-skills.ts` · `sanitize.ts` · `notifications.ts` · `git-diff.ts` · `lock.ts` · `debug-report.ts`
 
-**Packages**: `packages/mcp-server/` · `packages/shared/` · `apps/` (web + API — separate from CLI)
+**Utils** (`src/utils/`): `parallel-tasks.ts` · `spinner-messages.ts` · `editor.ts` · `review.ts` · `prompt.ts` · `version-check.ts` · `dependencies.ts` · `waiting-content.ts` · `waiting-cards.json`
 
-## LLM Provider Resolution
+**Telemetry** (`src/telemetry/`): `index.ts` · `config.ts` · `events.ts` · **Learner** (`src/learner/`): `writer.ts` · `storage.ts` · `attribution.ts` · `roi.ts` · `utils.ts` · `stdin.ts`
 
-1. `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-6`)
-2. `VERTEX_PROJECT_ID` / `GCP_PROJECT_ID` → Vertex (`us-east5`; ADC or `VERTEX_SA_CREDENTIALS`)
-3. `OPENAI_API_KEY` → OpenAI (`gpt-4.1`; `OPENAI_BASE_URL` for custom endpoints)
-4. `CALIBER_USE_CURSOR_SEAT=1` → Cursor (headless `agent --print`)
-5. `CALIBER_USE_CLAUDE_CLI=1` → Claude Code CLI (spawns `claude -p`)
-6. `~/.caliber/config.json` — written by `caliber config`
-7. `CALIBER_MODEL` — overrides model for any provider
+**Other**: `github-action/action.yml` · `github-action/index.js` · `assets/video/` (Remotion) · `scripts/` · `docs/FLOW.md` · `src/constants.ts` · `src/test/setup.ts` · `CONTRIBUTING.md` · `CHANGELOG.md` · `TODOS.md`
 
-## Two-Tier Model System
+**Workspaces**: `packages/shared/` · `packages/mcp-server/` (MCP server) · `apps/web/` · `apps/api/`
 
-Fast model for lightweight tasks; full model for generation/refinement. `getFastModel()` resolves: `CALIBER_FAST_MODEL` → `ANTHROPIC_SMALL_FAST_MODEL` → config `fastModel` → `DEFAULT_FAST_MODELS[provider]`.
-- Anthropic/Vertex fast: `claude-haiku-4-5-20251001`
-- OpenAI fast: `gpt-4.1-mini`
-- Cursor: default `sonnet-4.6`, fast `gpt-5.3-codex-fast`
-- `ANTHROPIC_SMALL_FAST_MODEL` env var is scoped to anthropic/vertex only
-- Callers spread `...(fastModel ? { model: fastModel } : {})` into call options.
+## Conventions
 
-## Testing
+- ESM with `.js` import extensions · Tests in `__tests__/` dirs · Setup: `src/test/setup.ts`
+- `unknown` over `any` · Conventional commits (`feat:`, `fix:`, `refactor:`)
+- Dev: `next` branch · Stable: `master` · Node >= 20
+- Config: `~/.caliber/config.json` (mode `0600`) · Constants: `src/constants.ts`
+- `package.json` scripts: `build`, `dev`, `test`, `lint`, `lint:fix`, `format`, `format:check`
 
-- **Framework**: Vitest (`globals: true`, `environment: node`), config in `vitest.config.ts`
-- **Setup**: `src/test/setup.ts` — globally mocks `llmCall`/`llmJsonCall`/`getProvider`
-- **Location**: `src/**/__tests__/*.test.ts`
-- **Coverage**: v8; excludes `src/test/`, `src/bin.ts`, `src/cli.ts`, `src/commands/**`, `dist/**`
-- **Single file**: `npx vitest run src/scoring/__tests__/accuracy.test.ts`
+## Key Patterns
 
-## Build & Deploy
+- **Providers**: implement `LLMProvider` from `src/llm/types.ts` (`call()`, `stream()`)
+- **Writers**: `src/writers/claude/index.ts` · `src/writers/cursor/index.ts` · `src/writers/codex/index.ts` each return `string[]`
+- **Scoring**: checks in `src/scoring/checks/` return `Check[]`, constants in `src/scoring/constants.ts`
+- **No hardcoded mappings**: detection is LLM-driven via `src/ai/detect.ts`
+- `collectFingerprint()` in `src/fingerprint/index.ts` is async with internal LLM enrichment
+- `resolveCaliber()` from `src/lib/resolve-caliber.ts` for CLI binary resolution
+- Cursor provider: `agent --print --trust --workspace /tmp` in `src/llm/cursor-acp.ts`
+- `getFastModel()` in `src/llm/config.ts`: `ANTHROPIC_SMALL_FAST_MODEL` scoped to anthropic/vertex
+- `validateModel()` skips seat-based providers (`isSeatBased()` in `src/llm/types.ts`)
+- Scoring: deterministic, no LLM · Backups via `src/writers/backup.ts`
+- Scanner: `src/scanner/index.ts` detects local MCP servers, rules, skills for state comparison
+- MCP server workspace: `packages/mcp-server/`
 
+<!-- caliber:managed:pre-commit -->
+## Before Committing
+
+**IMPORTANT:** Before every git commit, you MUST ensure Caliber syncs agent configs with the latest code changes.
+
+First, check if the pre-commit hook is already installed:
 ```bash
-npm run build          # compile TypeScript via tsup → dist/
-npx tsc --noEmit       # type-check without emitting files
-npm publish --access public   # publish @rely-ai/caliber to npm
-npm version patch             # bump patch version before publish
+grep -q "caliber" .git/hooks/pre-commit 2>/dev/null && echo "hook-active" || echo "no-hook"
 ```
 
-## Key Conventions
+- If **hook-active**: the hook handles sync automatically — just commit normally. Tell the user: "Caliber will sync your agent configs automatically via the pre-commit hook."
+- If **no-hook**: run Caliber manually before committing:
+  1. Tell the user: "Caliber: Syncing agent configs with your latest changes..."
+  2. Run: `caliber refresh && git add CLAUDE.md .claude/ .cursor/ .cursorrules .github/copilot-instructions.md .github/instructions/ AGENTS.md CALIBER_LEARNINGS.md 2>/dev/null`
+  3. After it completes, briefly tell the user what Caliber updated. Then proceed with the commit.
 
-- **ES module imports require `.js` extension** even for `.ts` source files
-- Strict mode, ES2022 target, `moduleResolution: bundler` (`tsconfig.json`)
-- Prefer `unknown` over `any`; explicit types on params/returns
-- `throw new Error('__exit__')` — clean CLI exit, no stack trace
-- Use `ora` spinners with `.fail()` before rethrowing async errors
-- Transient LLM errors auto-retry in `llmCall()` via `TRANSIENT_ERRORS` array
-- JSON from LLM: always use `extractJson()` from `src/llm/utils.ts`, never raw `JSON.parse()`
-- Telemetry via `posthog-node` — wrap commands with `tracked()` in `src/cli.ts`
-- Key deps: `commander`, `chalk`, `ora`, `diff`, `glob`, `tsup`, `@inquirer/confirm`, `@inquirer/select`, `@inquirer/checkbox`, `posthog-node`
-- API keys stored in `~/.caliber/config.json` with `0600` permissions — never in project files
+If `caliber` is not found, tell the user: "This project uses Caliber for agent config sync. Run /setup-caliber to get set up."
+<!-- /caliber:managed:pre-commit -->
 
-## Commit Convention
+<!-- caliber:managed:learnings -->
+## Session Learnings
 
-`feat:` → minor · `fix:`/`refactor:`/`chore:` → patch · `feat!:` → major
-Scope optional: `feat(scanner): detect Cursor config`
-Do NOT include Co-Authored-By headers in commits.
+Read `CALIBER_LEARNINGS.md` for patterns and anti-patterns learned from previous sessions.
+These are auto-extracted from real tool usage — treat them as project-specific rules.
+<!-- /caliber:managed:learnings -->
 
-## Permissions
+<!-- caliber:managed:sync -->
+## Context Sync
 
-See `.claude/settings.json`. Never commit API keys or credentials.
+This project uses [Caliber](https://github.com/caliber-ai-org/ai-setup) to keep AI agent configs in sync across Claude Code, Cursor, Copilot, and Codex.
+Configs update automatically before each commit via `caliber refresh`.
+If the pre-commit hook is not set up, run `/setup-caliber` to configure everything automatically.
+<!-- /caliber:managed:sync -->

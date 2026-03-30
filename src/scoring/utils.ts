@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { join, relative } from 'path';
 
 export function readFileOrNull(filePath: string): string | null {
@@ -20,16 +21,44 @@ export function readJsonOrNull(filePath: string): Record<string, unknown> | null
 }
 
 const IGNORED_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt',
-  '__pycache__', '.venv', 'venv', 'env', '.env', 'target', 'vendor',
-  '.cache', '.parcel-cache', 'coverage', '.nyc_output', '.turbo',
-  '.caliber', '.claude', '.cursor', '.agents', '.codex',
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'out',
+  '.next',
+  '.nuxt',
+  '__pycache__',
+  '.venv',
+  'venv',
+  'env',
+  '.env',
+  'target',
+  'vendor',
+  '.cache',
+  '.parcel-cache',
+  'coverage',
+  '.nyc_output',
+  '.turbo',
+  '.caliber',
+  '.claude',
+  '.cursor',
+  '.agents',
+  '.codex',
 ]);
 
 const IGNORED_FILES = new Set([
-  '.DS_Store', 'Thumbs.db', '.gitignore', '.editorconfig',
-  '.prettierrc', '.prettierignore', '.eslintignore',
-  'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb',
+  '.DS_Store',
+  'Thumbs.db',
+  '.gitignore',
+  '.editorconfig',
+  '.prettierrc',
+  '.prettierignore',
+  '.eslintignore',
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'bun.lockb',
 ]);
 
 export interface ProjectStructure {
@@ -38,17 +67,87 @@ export interface ProjectStructure {
 }
 
 /**
+ * Check if a directory is inside a git repo.
+ * Returns false if git is unavailable or not a repo.
+ */
+function isGitRepo(dir: string): boolean {
+  try {
+    execFileSync('git', ['rev-parse', '--git-dir'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Batch-check which paths are gitignored.
+ * Returns the set of relative paths that are ignored, or null if not a git repo.
+ */
+function checkGitIgnored(dir: string, paths: string[]): Set<string> | null {
+  if (paths.length === 0) return new Set();
+  try {
+    const result = execFileSync('git', ['check-ignore', ...paths], {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return new Set(
+      result
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean),
+    );
+  } catch (err) {
+    // git check-ignore exits 1 when no paths are ignored (not an error)
+    if (
+      err &&
+      typeof err === 'object' &&
+      'status' in err &&
+      (err as { status: number }).status === 1
+    ) {
+      return new Set<string>();
+    }
+    return null;
+  }
+}
+
+/**
  * Scan the project filesystem up to 2 levels deep.
  * Returns directory and file names relative to root.
+ * Respects .gitignore when inside a git repository.
  */
 export function collectProjectStructure(dir: string, maxDepth = 2): ProjectStructure {
   const dirs: string[] = [];
   const files: string[] = [];
+  const useGit = isGitRepo(dir);
 
   function walk(currentDir: string, depth: number): void {
     if (depth > maxDepth) return;
     try {
       const entries = readdirSync(currentDir, { withFileTypes: true });
+
+      // Collect directory names at this level for batch gitignore check
+      const dirEntries: { name: string; rel: string }[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const name = entry.name;
+        if (IGNORED_DIRS.has(name)) continue;
+        if (name.startsWith('.') && IGNORED_DIRS.has(name)) continue;
+        dirEntries.push({ name, rel: relative(dir, join(currentDir, name)) });
+      }
+
+      // Batch check gitignored dirs in a single git call per level
+      const gitIgnored = useGit
+        ? checkGitIgnored(
+            dir,
+            dirEntries.map((d) => d.rel),
+          )
+        : null;
+
       for (const entry of entries) {
         const name = entry.name;
         if (name.startsWith('.') && IGNORED_DIRS.has(name)) continue;
@@ -58,13 +157,16 @@ export function collectProjectStructure(dir: string, maxDepth = 2): ProjectStruc
 
         if (entry.isDirectory()) {
           if (IGNORED_DIRS.has(name)) continue;
+          if (gitIgnored?.has(rel)) continue;
           dirs.push(rel);
           walk(join(currentDir, name), depth + 1);
         } else if (entry.isFile()) {
           files.push(rel);
         }
       }
-    } catch { /* dir doesn't exist or not readable */ }
+    } catch {
+      /* dir doesn't exist or not readable */
+    }
   }
 
   walk(dir, 0);
@@ -86,12 +188,14 @@ export function collectPrimaryConfigContent(dir: string): string {
   // Cursor .mdc rules (always loaded via frontmatter matching)
   try {
     const rulesDir = join(dir, '.cursor', 'rules');
-    const mdcFiles = readdirSync(rulesDir).filter(f => f.endsWith('.mdc'));
+    const mdcFiles = readdirSync(rulesDir).filter((f) => f.endsWith('.mdc'));
     for (const f of mdcFiles) {
       const content = readFileOrNull(join(rulesDir, f));
       if (content) parts.push(content);
     }
-  } catch { /* dir doesn't exist */ }
+  } catch {
+    /* dir doesn't exist */
+  }
 
   return parts.join('\n');
 }
@@ -116,7 +220,9 @@ export function collectAllConfigContent(dir: string): string {
           if (content) parts.push(content);
         }
       }
-    } catch { /* dir doesn't exist */ }
+    } catch {
+      /* dir doesn't exist */
+    }
   }
 
   return parts.join('\n');
@@ -187,7 +293,7 @@ export function analyzeMarkdownStructure(content: string): MarkdownStructure {
     listItemCount,
     inlineCodeCount,
     totalLines: lines.length,
-    nonEmptyLines: lines.filter(l => l.trim().length > 0).length,
+    nonEmptyLines: lines.filter((l) => l.trim().length > 0).length,
   };
 }
 
@@ -204,7 +310,11 @@ export function extractReferences(content: string): string[] {
   while ((match = backtickPattern.exec(content)) !== null) {
     const term = match[1].trim();
     // Must look like a path (contains / or ends with .ext) and not be a shell command
-    if ((term.includes('/') || /\.\w{1,5}$/.test(term)) && !term.startsWith('-') && term.length < 200) {
+    if (
+      (term.includes('/') || /\.\w{1,5}$/.test(term)) &&
+      !term.startsWith('-') &&
+      term.length < 200
+    ) {
       // Skip scoped package names (@scope/package)
       if (term.startsWith('@') && (term.match(/\//g) || []).length === 1) continue;
       // Skip things that look like commands (contain spaces)
@@ -219,7 +329,7 @@ export function extractReferences(content: string): string[] {
         if (term !== term.toLowerCase() && !/^[a-z]/.test(term)) continue;
         // Very short segments on both sides of / are likely not paths
         const segments = term.split('/');
-        if (segments.every(s => s.length <= 3)) continue;
+        if (segments.every((s) => s.length <= 3)) continue;
       }
       // Strip trailing punctuation
       const cleaned = term.replace(/[,;:!?)]+$/, '');
@@ -288,7 +398,10 @@ export function countConcreteness(content: string): { concrete: number; abstract
   let inCodeBlock = false;
 
   for (const line of content.split('\n')) {
-    if (line.trim().startsWith('```')) { inCodeBlock = !inCodeBlock; continue; }
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
     const classification = classifyLine(line, inCodeBlock);
     if (classification === 'concrete') concrete++;
     else if (classification === 'abstract') abstract++;
@@ -306,7 +419,10 @@ export function countTreeLines(content: string): number {
   let inCodeBlock = false;
 
   for (const line of content.split('\n')) {
-    if (line.trim().startsWith('```')) { inCodeBlock = !inCodeBlock; continue; }
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
     if (inCodeBlock && treeLinePattern.test(line)) count++;
   }
 
@@ -318,9 +434,17 @@ export function countTreeLines(content: string): number {
  * Lines are trimmed and filtered to > 10 chars.
  */
 export function calculateDuplicatePercent(content1: string, content2: string): number {
-  const lines1 = new Set(content1.split('\n').map(l => l.trim()).filter(l => l.length > 10));
-  const lines2 = content2.split('\n').map(l => l.trim()).filter(l => l.length > 10);
-  const overlapping = lines2.filter(l => lines1.has(l)).length;
+  const lines1 = new Set(
+    content1
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 10),
+  );
+  const lines2 = content2
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 10);
+  const overlapping = lines2.filter((l) => lines1.has(l)).length;
   return lines2.length > 0 ? Math.round((overlapping / lines2.length) * 100) : 0;
 }
 
@@ -345,9 +469,11 @@ export function isEntryMentioned(entry: string, contentLower: string): boolean {
   const lastSegment = entry.split('/').pop()?.toLowerCase();
   if (lastSegment && lastSegment.length > 3) variants.push(lastSegment);
 
-  return variants.some(v => {
+  return variants.some((v) => {
     const escaped = v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(?:^|[\\s\`/"'\\.,(])${escaped}(?:[\\s\`/"'.,;:!?)\\\\]|$)`, 'i').test(contentLower);
+    return new RegExp(`(?:^|[\\s\`/"'\\.,(])${escaped}(?:[\\s\`/"'.,;:!?)\\\\]|$)`, 'i').test(
+      contentLower,
+    );
   });
 }
 
@@ -356,7 +482,10 @@ export function isEntryMentioned(entry: string, contentLower: string): boolean {
  * Lines inside code blocks, with backticks, or with path-like content are concrete.
  * Returns null for neutral lines (empty, headings) that should be excluded from the ratio.
  */
-export function classifyLine(line: string, inCodeBlock: boolean): 'concrete' | 'abstract' | 'neutral' {
+export function classifyLine(
+  line: string,
+  inCodeBlock: boolean,
+): 'concrete' | 'abstract' | 'neutral' {
   if (inCodeBlock) return 'concrete';
   const trimmed = line.trim();
   if (trimmed.length === 0) return 'neutral';
@@ -369,7 +498,8 @@ export function classifyLine(line: string, inCodeBlock: boolean): 'concrete' | '
   // Has directory path pattern (at least one segment > 3 chars)
   if (/[a-zA-Z0-9_]{4,}\/[a-zA-Z0-9_.-]/.test(trimmed)) return 'concrete';
   // References a file with extension
-  if (/\b[a-zA-Z0-9_-]+\.[a-zA-Z]{1,5}\b/.test(trimmed) && !/\b(e\.g|i\.e|vs|etc)\b/i.test(trimmed)) return 'concrete';
+  if (/\b[a-zA-Z0-9_-]+\.[a-zA-Z]{1,5}\b/.test(trimmed) && !/\b(e\.g|i\.e|vs|etc)\b/i.test(trimmed))
+    return 'concrete';
 
   return 'abstract';
 }

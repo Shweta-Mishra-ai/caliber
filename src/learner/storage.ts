@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {
-  LEARNING_DIR,
+  getLearningDir,
   LEARNING_SESSION_FILE,
   LEARNING_STATE_FILE,
   LEARNING_MAX_EVENTS,
@@ -45,17 +45,17 @@ const DEFAULT_STATE: LearningState = {
 };
 
 export function ensureLearningDir(): void {
-  if (!fs.existsSync(LEARNING_DIR)) {
-    fs.mkdirSync(LEARNING_DIR, { recursive: true });
+  if (!fs.existsSync(getLearningDir())) {
+    fs.mkdirSync(getLearningDir(), { recursive: true });
   }
 }
 
 function sessionFilePath(): string {
-  return path.join(LEARNING_DIR, LEARNING_SESSION_FILE);
+  return path.join(getLearningDir(), LEARNING_SESSION_FILE);
 }
 
 function stateFilePath(): string {
-  return path.join(LEARNING_DIR, LEARNING_STATE_FILE);
+  return path.join(getLearningDir(), LEARNING_STATE_FILE);
 }
 
 function truncateResponse(response: Record<string, unknown>): Record<string, unknown> {
@@ -64,32 +64,30 @@ function truncateResponse(response: Record<string, unknown>): Record<string, unk
   return { _truncated: str.slice(0, MAX_RESPONSE_LENGTH) };
 }
 
+function trimSessionFileIfNeeded(filePath: string): void {
+  const state = readState();
+  if (state.eventCount + 1 > LEARNING_MAX_EVENTS) {
+    const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+    if (lines.length > LEARNING_MAX_EVENTS) {
+      const kept = lines.slice(lines.length - LEARNING_MAX_EVENTS);
+      fs.writeFileSync(filePath, kept.join('\n') + '\n');
+    }
+  }
+}
+
 export function appendEvent(event: ToolEvent): void {
   ensureLearningDir();
   const truncated = { ...event, tool_response: truncateResponse(event.tool_response) };
   const filePath = sessionFilePath();
-
   fs.appendFileSync(filePath, JSON.stringify(truncated) + '\n');
-
-  const count = getEventCount();
-  if (count > LEARNING_MAX_EVENTS) {
-    const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
-    const kept = lines.slice(lines.length - LEARNING_MAX_EVENTS);
-    fs.writeFileSync(filePath, kept.join('\n') + '\n');
-  }
+  trimSessionFileIfNeeded(filePath);
 }
 
 export function appendPromptEvent(event: PromptEvent): void {
   ensureLearningDir();
   const filePath = sessionFilePath();
   fs.appendFileSync(filePath, JSON.stringify(event) + '\n');
-
-  const count = getEventCount();
-  if (count > LEARNING_MAX_EVENTS) {
-    const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
-    const kept = lines.slice(lines.length - LEARNING_MAX_EVENTS);
-    fs.writeFileSync(filePath, kept.join('\n') + '\n');
-  }
+  trimSessionFileIfNeeded(filePath);
 }
 
 export function readAllEvents(): SessionEvent[] {
@@ -146,7 +144,7 @@ const LOCK_FILE = 'finalize.lock';
 const LOCK_STALE_MS = 5 * 60 * 1000; // 5 minutes
 
 function lockFilePath(): string {
-  return path.join(LEARNING_DIR, LOCK_FILE);
+  return path.join(getLearningDir(), LOCK_FILE);
 }
 
 /** Attempt to acquire the finalize lock. Returns true if acquired. */
@@ -158,11 +156,18 @@ export function acquireFinalizeLock(): boolean {
     try {
       const stat = fs.statSync(lockPath);
       if (Date.now() - stat.mtimeMs < LOCK_STALE_MS) {
-        return false; // Lock is held and not stale
+        // Check if the holding process is still alive
+        const pid = parseInt(fs.readFileSync(lockPath, 'utf-8').trim(), 10);
+        if (!isNaN(pid) && isProcessAlive(pid)) {
+          return false; // Lock is held by a live process
+        }
+        // Process is dead — treat as stale despite timestamp
       }
     } catch {
-      // Can't stat — treat as stale
+      // Can't stat or read — treat as stale
     }
+    // Stale lock — remove it before re-creating
+    try { fs.unlinkSync(lockPath); } catch { /* race — another process may have cleaned it */ }
   }
 
   try {
@@ -170,6 +175,15 @@ export function acquireFinalizeLock(): boolean {
     return true;
   } catch {
     // File was created between check and write — another process won
+    return false;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
     return false;
   }
 }

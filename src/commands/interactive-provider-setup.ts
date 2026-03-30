@@ -46,7 +46,6 @@ export async function runInteractiveProviderSetup(options?: {
       break;
     }
     case 'cursor': {
-      config.model = DEFAULT_MODELS.cursor;
       if (!isCursorAgentAvailable()) {
         console.log(chalk.yellow('\n  Cursor Agent CLI not found.'));
         console.log(chalk.dim('  Install it: ') + chalk.hex('#83D1EB')('curl https://cursor.com/install -fsS | bash'));
@@ -59,6 +58,7 @@ export async function runInteractiveProviderSetup(options?: {
         const proceed = await confirm({ message: 'Continue anyway?' });
         if (!proceed) throw new Error('__exit__');
       }
+      config.model = await promptInput(`Model (default: ${DEFAULT_MODELS.cursor}):`) || DEFAULT_MODELS.cursor;
       break;
     }
     case 'anthropic': {

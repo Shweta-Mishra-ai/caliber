@@ -22,38 +22,40 @@ describe('writeCursorConfig — skills', () => {
 
     const written = writeCursorConfig(config);
 
-    expect(written).toHaveLength(2);
     expect(written).toContain(path.join('.cursor', 'skills', 'testing-guide', 'SKILL.md'));
     expect(written).toContain(path.join('.cursor', 'skills', 'deploy', 'SKILL.md'));
+    expect(written).toContain(path.join('.cursor', 'rules', 'caliber-pre-commit.mdc'));
 
-    expect(fs.mkdirSync).toHaveBeenCalledWith(
-      path.join('.cursor', 'skills', 'testing-guide'),
-      { recursive: true }
-    );
+    expect(fs.mkdirSync).toHaveBeenCalledWith(path.join('.cursor', 'skills', 'testing-guide'), {
+      recursive: true,
+    });
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       path.join('.cursor', 'skills', 'testing-guide', 'SKILL.md'),
-      '---\nname: testing-guide\ndescription: How to write tests\n---\nWrite tests'
+      '---\nname: testing-guide\ndescription: How to write tests\n---\nWrite tests',
     );
   });
 
-  it('returns empty array when no skills provided', () => {
+  it('writes pre-commit, learnings, and sync rules even when no skills provided', () => {
     const written = writeCursorConfig({});
-    expect(written).toHaveLength(0);
-    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(written).toHaveLength(3);
+    expect(written).toContain(path.join('.cursor', 'rules', 'caliber-pre-commit.mdc'));
+    expect(written).toContain(path.join('.cursor', 'rules', 'caliber-learnings.mdc'));
+    expect(written).toContain(path.join('.cursor', 'rules', 'caliber-sync.mdc'));
   });
 
   it('writes both skills and legacy cursorrules when both are present', () => {
     const config = {
       cursorrules: 'legacy rules content',
-      skills: [
-        { name: 'my-skill', description: 'A skill', content: 'skill content' },
-      ],
+      skills: [{ name: 'my-skill', description: 'A skill', content: 'skill content' }],
     };
 
     const written = writeCursorConfig(config);
 
     expect(written).toContain('.cursorrules');
     expect(written).toContain(path.join('.cursor', 'skills', 'my-skill', 'SKILL.md'));
-    expect(written).toHaveLength(2);
+    expect(written).toContain(path.join('.cursor', 'rules', 'caliber-pre-commit.mdc'));
+    expect(written).toContain(path.join('.cursor', 'rules', 'caliber-learnings.mdc'));
+    expect(written).toContain(path.join('.cursor', 'rules', 'caliber-sync.mdc'));
+    expect(written).toHaveLength(5);
   });
 });

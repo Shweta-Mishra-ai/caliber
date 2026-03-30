@@ -1,19 +1,27 @@
 import fs from 'fs';
 import path from 'path';
+import { appendManagedBlocks } from './pre-commit-block.js';
 
 interface RefreshDocs {
+  agentsMd?: string | null;
   claudeMd?: string | null;
   readmeMd?: string | null;
   cursorrules?: string | null;
   cursorRules?: Array<{ filename: string; content: string }> | null;
-  claudeSkills?: Array<{ filename: string; content: string }> | null;
+  copilotInstructions?: string | null;
+  copilotInstructionFiles?: Array<{ filename: string; content: string }> | null;
 }
 
 export function writeRefreshDocs(docs: RefreshDocs): string[] {
   const written: string[] = [];
 
+  if (docs.agentsMd) {
+    fs.writeFileSync('AGENTS.md', appendManagedBlocks(docs.agentsMd, 'codex'));
+    written.push('AGENTS.md');
+  }
+
   if (docs.claudeMd) {
-    fs.writeFileSync('CLAUDE.md', docs.claudeMd);
+    fs.writeFileSync('CLAUDE.md', appendManagedBlocks(docs.claudeMd));
     written.push('CLAUDE.md');
   }
 
@@ -31,19 +39,26 @@ export function writeRefreshDocs(docs: RefreshDocs): string[] {
     const rulesDir = path.join('.cursor', 'rules');
     if (!fs.existsSync(rulesDir)) fs.mkdirSync(rulesDir, { recursive: true });
     for (const rule of docs.cursorRules) {
-      const filePath = path.join(rulesDir, rule.filename);
-      fs.writeFileSync(filePath, rule.content);
-      written.push(filePath);
+      fs.writeFileSync(path.join(rulesDir, rule.filename), rule.content);
+      written.push(`.cursor/rules/${rule.filename}`);
     }
   }
 
-  if (docs.claudeSkills) {
-    const skillsDir = path.join('.claude', 'skills');
-    if (!fs.existsSync(skillsDir)) fs.mkdirSync(skillsDir, { recursive: true });
-    for (const skill of docs.claudeSkills) {
-      const filePath = path.join(skillsDir, skill.filename);
-      fs.writeFileSync(filePath, skill.content);
-      written.push(filePath);
+  if (docs.copilotInstructions) {
+    fs.mkdirSync('.github', { recursive: true });
+    fs.writeFileSync(
+      path.join('.github', 'copilot-instructions.md'),
+      appendManagedBlocks(docs.copilotInstructions, 'copilot'),
+    );
+    written.push('.github/copilot-instructions.md');
+  }
+
+  if (docs.copilotInstructionFiles) {
+    const instructionsDir = path.join('.github', 'instructions');
+    fs.mkdirSync(instructionsDir, { recursive: true });
+    for (const file of docs.copilotInstructionFiles) {
+      fs.writeFileSync(path.join(instructionsDir, file.filename), file.content);
+      written.push(`.github/instructions/${file.filename}`);
     }
   }
 

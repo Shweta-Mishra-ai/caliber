@@ -1,67 +1,106 @@
-# Adding a New CLI Command
+---
+name: adding-a-command
+description: Create a new CLI command following Commander.js pattern. Handles command file in src/commands/, registration in src/cli.ts, telemetry tracking via tracked() wrapper, and option parsing. Use when user says 'add command', 'new CLI command', 'create subcommand', or adds files to src/commands/. Do NOT use for modifying existing commands or refactoring command structure.
+---
+# Adding a Command
 
 ## Critical
 
-- **Imports**: Use `.js` extension for all relative imports (e.g. `'../llm/config.js'`).
-- **Registration**: Every command must be wrapped with `tracked('commandName', handler)` in `src/cli.ts` so telemetry runs.
-- **Clean exit**: For user-facing failures (e.g. no config, validation), call `throw new Error('__exit__')` so no stack trace is printed.
-- **Spinner on error**: In a `catch` block, call `spinner.fail(chalk.red(...))` before rethrowing or throwing `__exit__`.
+- Commands MUST be registered in `src/cli.ts` using `.command()` and `.action()` with the `tracked()` wrapper for telemetry.
+- Command file MUST be in `src/commands/{commandName}.ts` and export a default async function with signature: `async (options: CommandOptions, ctx: CLIContext) => Promise<void>`.
+- Always use `tracked(commandName, async () => { ... })` wrapper in `src/cli.ts` to enable telemetry tracking.
+- Test file MUST be in `src/commands/__tests__/{commandName}.test.ts` with at least one happy-path test.
 
 ## Instructions
 
-### 1. Create the command file
+1. **Create command file** in `src/commands/{commandName}.ts`
+   - Export default async function: `export default async (options: any, ctx: CLIContext) => { ... }`
+   - Import `CLIContext` from `src/cli.ts`
+   - Use `ctx.log()` for output (respects quiet mode via `--quiet`)
+   - Use `ctx.spinner()` for async operations
+   - Verify function signature matches existing commands like `src/commands/score.ts`
 
-Create `src/commands/<kebab-name>.ts`. Export a single async function named `<camelName>Command`. Accept an options object typed from the flags you will add in Step 2.
+2. **Register in src/cli.ts**
+   - Import the command: `import addCommand from './commands/mycommand.js'`
+   - Add command definition:
+     ```ts
+     program
+       .command('mycommand')
+       .description('One-line description')
+       .option('--option', 'Option description')
+       .action(tracked('mycommand', addCommand))
+     ```
+   - Verify imports are `.js` (ESM)
+   - Verify `tracked()` wrapper is applied to `.action()`
 
-- Import: `chalk`, `ora`; for LLM: `loadConfig` (and optionally `getFastModel`) from `../llm/config.js`; for calls: `llmCall` / `llmJsonCall` from `../llm/index.js`. Use `.js` in paths.
-- If the command needs an LLM provider: at the start, `const config = loadConfig(); if (!config) { console.log(chalk.red('No LLM provider configured. Run `caliber config` or set ANTHROPIC_API_KEY.')); throw new Error('__exit__'); }`
-- For async work, use `const spinner = ora('Message...').start();` then in `try` use `spinner.succeed(...)` / `spinner.warn(...)`; in `catch` use `spinner.fail(chalk.red(err instanceof Error ? err.message : '...'));` then rethrow or `throw new Error('__exit__')`.
+3. **Add telemetry event** in `src/telemetry/events.ts`
+   - Add event type: `export type MyCommandEvent = { type: 'mycommand:start' | 'mycommand:success' | 'mycommand:error'; ... }`
+   - Include `duration?: number` field for timed events
+   - Update `export type AllEvents = ... | MyCommandEvent`
+   - Verify event matches pattern in existing events
 
-**Verify**: File path is `src/commands/<name>.ts`, export name ends with `Command`, and imports use `.js` extensions.
+4. **Create test file** in `src/commands/__tests__/{commandName}.test.ts`
+   - Import `describe`, `it`, `expect`, `vi` from `vitest`
+   - Import command from parent: `import addCommand from '../mycommand.js'`
+   - Create mock `CLIContext`: `{ log: vi.fn(), spinner: vi.fn().mockReturnValue({ start: vi.fn(), stop: vi.fn() }) }`
+   - Test happy path: `await addCommand({}, ctx); expect(ctx.log).toHaveBeenCalled()`
+   - Verify test runs: `npx vitest run src/commands/__tests__/{commandName}.test.ts`
 
-### 2. Register in CLI
-
-In `src/cli.ts`:
-
-- Add: `import { <camelName>Command } from './commands/<kebab-name>.js';`
-- Add: `program.command('<name>').description('...').option('--flag', 'Description').action(tracked('<name>', <camelName>Command));`
-- For subcommands (e.g. `learn finalize`): create a parent with `program.command('parent', { hidden: true })` then `parent.command('child').action(tracked('parent:child', handler));`
-
-**Verify**: `npm run build` succeeds and `node dist/bin.js <name> --help` shows the command and options.
-
-### 3. Use the LLM layer (if needed)
-
-- Use `llmCall` for plain text or `llmJsonCall<YourType>()` for JSON. Both are in `src/llm/index.js`. Never import provider SDKs directly.
-- Optional fast model: `const fastModel = getFastModel();` and pass `...(fastModel ? { model: fastModel } : {})` into the call options.
-- See the `llm-provider` skill for streaming and provider details.
-
-**Verify**: When config is missing, the command exits with your chalk message and no stack trace (__exit__).
-
-### 4. Add a test
-
-Create `src/commands/__tests__/<kebab-name>.test.ts`. Use `describe`/`it`/`expect`/`vi` from vitest. `llmCall`/`llmJsonCall`/`getProvider` are globally mocked in `src/test/setup.ts`. Mock only what the command under test needs (e.g. `vi.mock('../../scanner/index.js')`). Test at least: success path and the __exit__ path when config is missing (if applicable).
-
-**Verify**: `npm run test -- src/commands/__tests__/<name>.test.ts` passes.
-
-### 5. Docs and commit
-
-Add a row to the Commands table in `README.md` if user-facing. Commit: `feat: add <name> command` (or `feat(commands): ...`).
+5. **Build and validate**
+   - Run `npm run build` → verify no TypeScript errors
+   - Run `npm run lint` → verify ESLint passes
+   - Test command: `node dist/bin.js mycommand --help` → verify options listed
+   - Run `npm run test` → verify new test passes
 
 ## Examples
 
-**User says**: "Add a `greet` command that says hello and optionally calls the LLM."
+User says: "Add a new `verify` command that checks if config files exist"
 
-**Actions**: (1) Create `src/commands/greet.ts` with `export async function greetCommand(options: { llm?: boolean })`, chalk + ora; if `options.llm` then `loadConfig()` and if !config throw __exit__ and show message, else `llmCall({ system: '...', prompt: 'Say hello.' })` and print result. (2) In `src/cli.ts`: import `greetCommand`, add `program.command('greet').option('--llm', 'Use LLM').action(tracked('greet', greetCommand));`. (3) Add `src/commands/__tests__/greet.test.ts` with test for no-llm output and test that when config is missing and `--llm` is used, command throws `__exit__`.
-
-**Result**: `caliber greet` and `caliber greet --llm` work; help shows the option; tests pass.
+**Actions:**
+1. Create `src/commands/verify.ts`:
+   ```ts
+   import { CLIContext } from '../cli.js';
+   export default async (options: any, ctx: CLIContext) => {
+     const spinner = ctx.spinner('Verifying config files...');
+     spinner.start();
+     const exists = await checkFilesExist();
+     spinner.stop();
+     ctx.log(`✓ Config files ${exists ? 'found' : 'missing'}`);
+   };
+   ```
+2. Register in `src/cli.ts`:
+   ```ts
+   import verifyCommand from './commands/verify.js';
+   program
+     .command('verify')
+     .description('Verify configuration files exist')
+     .action(tracked('verify', verifyCommand))
+   ```
+3. Add to `src/telemetry/events.ts`:
+   ```ts
+   export type VerifyEvent = {
+     type: 'verify:start' | 'verify:success' | 'verify:error';
+     duration?: number;
+   };
+   ```
+4. Create `src/commands/__tests__/verify.test.ts` with happy-path test
+5. Run `npm run build && npm run test && npm run lint`
 
 ## Common Issues
 
-| Issue | Fix |
-|-------|-----|
-| Command not listed in `caliber --help` | Ensure `program.command('name').action(tracked('name', handler))` is in `src/cli.ts` and the handler is the same function you export from the command file. |
-| Options undefined in handler | Commander passes options as first argument. Define an interface (e.g. `RefreshOptions { quiet?: boolean }`) and use it as the parameter type; options match `.option('--quiet', '...')` as `quiet: boolean`. |
-| Stack trace on validation failure | Use `throw new Error('__exit__')` after printing the message; the CLI catches it and exits without a trace. |
-| `Cannot find module '../llm/config.js'` | You must use the `.js` extension in imports from `.ts` files (ESM resolution in this project). |
-| Tests fail with "getProvider is not a function" or real LLM call | Ensure the test file is under `src/**/*.test.ts` so `src/test/setup.ts` runs and mocks `../llm/index.js`. For tests in `src/commands/__tests__/`, the global mock applies to code under `src/commands/` that imports from `../llm/index.js`. |
-| Spinner keeps running after error | In every `catch` block that rethrows, call `spinner.fail(chalk.red(...))` before `throw err` or `throw new Error('__exit__')`. |
+**"Cannot find module './commands/mycommand.js'"**
+- Verify file is at `src/commands/mycommand.ts` (TypeScript)
+- Verify import in `src/cli.ts` uses `.js` extension: `from './commands/mycommand.js'`
+- Rebuild: `npm run build`
+
+**"tracked is not exported from src/cli.ts"**
+- Verify `tracked()` function exists in `src/cli.ts` (it should; check existing commands)
+- Verify you're using it as `.action(tracked('commandName', commandFunction))`
+
+**Test fails with "CLIContext is not a constructor"**
+- Create mock object manually: `const ctx = { log: vi.fn(), spinner: vi.fn().mockReturnValue({ start: vi.fn(), stop: vi.fn() }) }`
+- Do NOT try to instantiate CLIContext; it's an interface
+
+**"--option not recognized" when testing**
+- Verify `.option()` is chained in `src/cli.ts` BEFORE `.action()`
+- Rebuild and test with `npm run build && node dist/bin.js mycommand --help`

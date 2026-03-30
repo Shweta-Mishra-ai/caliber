@@ -1,104 +1,147 @@
 ---
 name: adding-a-command
-description: Add a new CLI command to @rely-ai/caliber. Creates files in src/commands/, registers with tracked() in src/cli.ts, wires llmCall/llmJsonCall from src/llm/index.ts, uses ora spinners and chalk for UX. Use when user says 'add command', 'new command', 'create subcommand', or creates files in src/commands/. Do NOT use for modifying scoring checks, fingerprinting logic, or LLM provider integration.
+description: Creates a new CLI command following the Commander.js pattern in src/commands/. Handles command registration in src/cli.ts, telemetry tracking via tracked() wrapper, and option parsing. Use when user says 'add command', 'new CLI command', 'create subcommand', or adds files to src/commands/. Do NOT use for modifying existing commands or fixing bugs in existing commands.
 ---
 # Adding a Command
 
 ## Critical
 
-- **Every command MUST call `tracked()`** wrapping the command definition in `src/cli.ts`. This is how telemetry and Cursor ACP integration work. Missing it breaks observability.
-- **Commands MUST export a default async function** from `src/commands/{name}.ts` matching the signature: `(options: CommandOptions, logger?: Logger) => Promise<void>`.
-- **Verify the command file exists and exports before registering in `src/cli.ts`** — TypeScript won't catch missing default exports at build time.
-- **Use only `ora` for spinners and `chalk` for color** — these are the project standards. No `console.log()` for errors; use `throw new Error()` instead.
+- **All commands must be wrapped in `tracked()`** from `src/telemetry/index.ts`. This is non-negotiable — every command logs its execution for metrics.
+- **Commands are exported as default functions** from `src/commands/{name}.ts`. The function signature must match: `export default function commandName(program: Command): void`.
+- **Register the command in `src/cli.ts`** in the main CLI builder. Import the command function and call it, passing the program instance.
+- **Test the command exists** before merging: `npm run build && npx caliber {command-name} --help` should return the help text without errors.
 
 ## Instructions
 
 1. **Create the command file** at `src/commands/{command-name}.ts`.
-   - Import: `import { tracked } from '../telemetry/index.js'`
-   - Import: `import { llmCall, llmJsonCall } from '../llm/index.js'`
-   - Import: `import ora from 'ora'`
-   - Import: `import chalk from 'chalk'`
-   - Export default async function with signature: `export default async function commandName(options: CommandOptions, logger?: Logger): Promise<void>`
-   - Use `ora().start()` for spinners; call `.succeed()`, `.fail()`, or `.stop()` before returning.
-   - Verify: Command file compiles with `npx tsc --noEmit`.
+   - Use kebab-case for file names (`src/commands/my-command.ts`).
+   - Export a default async function that receives `program: Command` parameter.
+   - The function builds and registers the command via `program.command('name')`.
+   - Verify: File exists and exports a default function with the correct signature.
 
-2. **Register the command in `src/cli.ts`**.
-   - Import the command: `import commandName from './commands/{command-name}.js'`
-   - Call `tracked()` wrapper: `tracked(program, 'command-name', (cmd) => { cmd.action(async (options) => { await commandName(options, logger); }); })`
-   - Check exact pattern from existing commands (e.g., `src/commands/status.ts` and its registration in `src/cli.ts`).
-   - Verify: Run `npm run build` without errors.
+2. **Define the command using Commander.js**.
+   - Chain `.description()`, `.option()`, `.action()` on the command object.
+   - Use `command.command('name').description('...')` for the command definition.
+   - Store the returned command object and call `.action()` on it.
+   - Verify: The action callback receives correct parameters (e.g., options object, command instance).
 
-3. **Wire LLM calls if needed**.
-   - For simple LLM generation (text): `const result = await llmCall(config, systemPrompt, userPrompt)`.
-   - For JSON parsing: `const parsed = await llmJsonCall(config, systemPrompt, userPrompt, parseFunction)`.
-   - Import `LLMConfig` from `src/llm/types.ts` and use `config: LLMConfig` parameter from `CommandOptions`.
-   - Check `src/llm/index.ts` for retry logic and `TRANSIENT_ERRORS`; all errors bubble up automatically.
-   - Verify: Test locally with `ANTHROPIC_API_KEY` set: `npm run build && npx caliber {command-name}`.
+3. **Wrap the action handler in `tracked()`**.
+   - Import `tracked` from `src/telemetry/index.ts`.
+   - Call `tracked('command-name', async (context) => { ... })` inside `.action()`.
+   - The callback receives `context` parameter (telemetry context); use it to report custom metrics if needed.
+   - Return the Promise from the tracked wrapper.
+   - Verify: The command runs and completes without telemetry errors (check console output).
 
-4. **Add tests** in `src/commands/__tests__/{command-name}.test.ts`.
-   - Use Vitest: `import { describe, it, expect, vi } from 'vitest'`
-   - Mock LLM: `vi.mock('../llm/index.js', () => ({ llmCall: vi.fn(), llmJsonCall: vi.fn() }))`
-   - Test happy path, error handling, and spinner state.
-   - Run: `npx vitest run src/commands/__tests__/{command-name}.test.ts`.
+4. **Parse and validate options**.
+   - Extract options from the options object passed to the action callback.
+   - Use destructuring: `const { optionName, flag } = options`.
+   - For required options, validate they exist and throw an error if missing.
+   - Verify: Running the command without required options produces a clear error message.
 
-5. **Ensure tracked() wraps the entire action** so telemetry logs command name, success/failure, and duration.
-   - Verify: Run command once; check `.caliber/manifest.json` has new event in `commands` array.
+5. **Register the command in `src/cli.ts`**.
+   - Import the command function at the top: `import myCommand from './commands/my-command.js'`.
+   - Call it in the buildCli function: `myCommand(program)`.
+   - Commands are registered in the order they appear in the function.
+   - Verify: `npx caliber --help` lists your command in the available commands.
+
+6. **Write a test** in `src/commands/__tests__/{command-name}.test.ts`.
+   - Use Vitest patterns from existing tests (e.g., `src/commands/__tests__/status.test.ts`).
+   - Mock external dependencies (filesystem, LLM calls, telemetry).
+   - Test: command registration, option parsing, success path, error handling.
+   - Verify: `npm run test -- src/commands/__tests__/{command-name}.test.ts` passes.
 
 ## Examples
 
-**User says:** "Add a 'validate' command that checks if CLAUDE.md exists and scores the project."
+### Example: User requests "add a greet command that takes a --name option"
 
-**Actions:**
-
-1. Create `src/commands/validate.ts`:
+**Action 1: Create `src/commands/greet.ts`**
 ```typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import ora from 'ora';
-import chalk from 'chalk';
-import { llmCall } from '../llm/index.js';
-import { CommandOptions, Logger } from '../types/index.js';
+import { Command } from 'commander';
+import { tracked } from '../telemetry/index.js';
 
-export default async function validate(
-  options: CommandOptions,
-  logger?: Logger
-): Promise<void> {
-  const spinner = ora('Validating CLAUDE.md...').start();
-  try {
-    const claudeMdPath = path.join(process.cwd(), 'CLAUDE.md');
-    await fs.access(claudeMdPath);
-    spinner.succeed(chalk.green('CLAUDE.md found'));
-  } catch (error) {
-    spinner.fail(chalk.red('CLAUDE.md not found'));
-    throw new Error('CLAUDE.md is required. Run `caliber init`.');
-  }
+export default function greetCommand(program: Command): void {
+  const cmd = program
+    .command('greet')
+    .description('Greet a user by name')
+    .option('--name <string>', 'Name to greet', 'World')
+    .action(async (options) => {
+      return tracked('greet', async (context) => {
+        const { name } = options;
+        console.log(`Hello, ${name}!`);
+      });
+    });
 }
 ```
 
-2. Register in `src/cli.ts`:
+**Action 2: Register in `src/cli.ts`**
+- Add import: `import greetCommand from './commands/greet.js'`
+- Call in buildCli: `greetCommand(program)`
+
+**Action 3: Test in `src/commands/__tests__/greet.test.ts`**
 ```typescript
-import validate from './commands/validate.js';
-// ...
-tracked(program, 'validate', (cmd) => {
-  cmd.description('Validate project configuration').action(async (options) => {
-    await validate(options, logger);
+import { describe, it, expect, vi } from 'vitest';
+import { Command } from 'commander';
+import greetCommand from '../greet.js';
+
+describe('greet', () => {
+  it('registers the command', () => {
+    const program = new Command();
+    greetCommand(program);
+    const cmd = program.commands.find((c) => c.name() === 'greet');
+    expect(cmd).toBeDefined();
+  });
+
+  it('greets with default name', async () => {
+    const program = new Command();
+    greetCommand(program);
+    const consoleSpy = vi.spyOn(console, 'log');
+    await program.parseAsync(['node', 'caliber', 'greet']);
+    expect(consoleSpy).toHaveBeenCalledWith('Hello, World!');
+  });
+
+  it('greets with custom name', async () => {
+    const program = new Command();
+    greetCommand(program);
+    const consoleSpy = vi.spyOn(console, 'log');
+    await program.parseAsync(['node', 'caliber', 'greet', '--name', 'Alice']);
+    expect(consoleSpy).toHaveBeenCalledWith('Hello, Alice!');
   });
 });
 ```
 
-3. Test:
+**Action 4: Verify**
 ```bash
 npm run build
-npx caliber validate  # Should succeed if CLAUDE.md exists
+npx caliber greet --help          # Shows help text
+npx caliber greet                 # Output: Hello, World!
+npx caliber greet --name Alice    # Output: Hello, Alice!
+npm run test -- src/commands/__tests__/greet.test.ts  # All tests pass
 ```
-
-**Result:** New `caliber validate` command works and logs telemetry.
 
 ## Common Issues
 
-- **"Default export not found"** when building: Verify command file has `export default async function ...` (not `export const` or `export class`). Check `src/commands/status.ts` for correct pattern.
-- **Command doesn't appear in `caliber help`**: Ensure `tracked()` wrapper is called in `src/cli.ts` during `program` setup, before `program.parse()`.
-- **Spinner shows indefinitely after command completes**: Call `.stop()`, `.succeed()`, or `.fail()` on spinner before returning or throwing. Missing this blocks process exit.
-- **LLM call fails with "Config not available"**: Verify `options.config` is passed from `CommandOptions`. If using LLM, check that user ran `caliber config set` or environment has `ANTHROPIC_API_KEY`.
-- **Test fails with "Cannot find module './llm/index.js'"**: Ensure mock path matches import: `vi.mock('../llm/index.js', ...)`. Use relative paths from test file.
-- **TypeScript error: "CommandOptions not assignable"**: Import exact type: `import type { CommandOptions, Logger } from '../types/index.js'`. Check `src/types/index.ts` for current definition.
+**Error: "Command 'mycommand' is not a valid command"**
+- Verify the command function was called in `src/cli.ts` inside `buildCli()`: look for `myCommand(program)`.
+- Verify the import path is correct: `import myCommand from './commands/my-command.js'` (note `.js` extension for ESM).
+- Run `npm run build` to regenerate dist/ and try again.
+
+**Error: "tracked is not a function"**
+- Verify import: `import { tracked } from '../telemetry/index.js'` at the top of the command file.
+- Verify the tracked call is async: `.action(async (options) => { return tracked(...); })`.
+- Verify the tracked callback returns or awaits a value; the action must return the Promise.
+
+**Error: "Option parsing failed" or options are undefined**
+- Verify options are defined via `.option()` before `.action()`.
+- Verify the action callback destructures options correctly: `const { optionName } = options`.
+- If testing, ensure the command is parsed with `await program.parseAsync([...])` including the command name and options.
+
+**Command appears in --help but fails when run**
+- Verify the tracked wrapper is present and the action callback is async.
+- Check for console errors: the action may throw before telemetry completes.
+- Verify external dependencies (file reads, LLM calls) are mocked in tests.
+- Run in dev mode: `npm run dev` and test locally before committing.
+
+**Test fails with "Command is not registered"**
+- Verify the test calls `greetCommand(program)` to register it.
+- Verify the command name in the test matches the `.command('name')` call.
+- Use `program.commands.find((c) => c.name() === 'name')` to debug if the command exists.

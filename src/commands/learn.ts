@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import chalk from 'chalk';
 import { readStdin } from '../learner/stdin.js';
 import {
@@ -14,7 +15,7 @@ import {
   releaseFinalizeLock,
 } from '../learner/storage.js';
 import type { ToolEvent, PromptEvent } from '../learner/storage.js';
-import { writeLearnedContent, readLearnedSection, migrateInlineLearnings } from '../learner/writer.js';
+import { writeLearnedContent, readLearnedSection, readPersonalLearnings, migrateInlineLearnings, addLearning } from '../learner/writer.js';
 import { sanitizeSecrets } from '../lib/sanitize.js';
 import { writeFinalizeSummary } from '../lib/notifications.js';
 import {
@@ -29,8 +30,11 @@ import { readExistingConfigs } from '../fingerprint/existing-config.js';
 import { analyzeEvents, calculateSessionWaste } from '../ai/learn.js';
 import { loadConfig } from '../llm/config.js';
 import { validateModel } from '../llm/index.js';
-import { recordSession, formatROISummary, readROIStats } from '../learner/roi.js';
+import { recordSession, formatROISummary, readROIStats, writeROIStats } from '../learner/roi.js';
 import type { LearningCostEntry, SessionROISummary } from '../learner/roi.js';
+import { matchLearningsToFailures, semanticMatchFallback, updateActivations, findStaleLearnings } from '../learner/attribution.js';
+import { PERSONAL_LEARNINGS_FILE, getLearningDir, LEARNING_FINALIZE_LOG, LEARNING_LAST_ERROR_FILE } from '../constants.js';
+import { resolveCaliber } from '../lib/resolve-caliber.js';
 import {
   trackLearnSessionAnalyzed,
   trackLearnROISnapshot,
@@ -42,6 +46,30 @@ const MIN_EVENTS_FOR_ANALYSIS = 25;
 const MIN_EVENTS_AUTO = 10;
 const AUTO_SETTLE_MS = 200;
 const INCREMENTAL_INTERVAL = 50;
+
+function writeFinalizeError(message: string): void {
+  try {
+    const errorPath = path.join(getLearningDir(), LEARNING_LAST_ERROR_FILE);
+    if (!fs.existsSync(getLearningDir())) fs.mkdirSync(getLearningDir(), { recursive: true });
+    fs.writeFileSync(errorPath, JSON.stringify({
+      timestamp: new Date().toISOString(),
+      error: message,
+      pid: process.pid,
+    }, null, 2));
+  } catch {
+    // Best effort
+  }
+}
+
+function readFinalizeError(): { timestamp: string; error: string } | null {
+  try {
+    const errorPath = path.join(getLearningDir(), LEARNING_LAST_ERROR_FILE);
+    if (!fs.existsSync(errorPath)) return null;
+    return JSON.parse(fs.readFileSync(errorPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
 
 export async function learnObserveCommand(options: { failure?: boolean; prompt?: boolean }) {
   try {
@@ -93,10 +121,14 @@ export async function learnObserveCommand(options: { failure?: boolean; prompt?:
         const { resolveCaliber } = await import('../lib/resolve-caliber.js');
         const bin = resolveCaliber();
         const { spawn } = await import('child_process');
+        const logPath = path.join(getLearningDir(), LEARNING_FINALIZE_LOG);
+        if (!fs.existsSync(getLearningDir())) fs.mkdirSync(getLearningDir(), { recursive: true });
+        const logFd = fs.openSync(logPath, 'a');
         spawn(bin, ['learn', 'finalize', '--auto', '--incremental'], {
           detached: true,
-          stdio: 'ignore',
+          stdio: ['ignore', logFd, logFd],
         }).unref();
+        fs.closeSync(logFd);
       } catch {
         // Best effort — don't block the hook
       }
@@ -134,16 +166,16 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
     const config = loadConfig();
     if (!config) {
       if (isAuto) return; // Graceful degradation: preserve events for later
-      console.log(chalk.yellow('caliber: no LLM provider configured — run `caliber config` first'));
+      console.log(chalk.yellow(`caliber: no LLM provider configured — run \`${resolveCaliber()} config\` first`));
       clearSession();
       resetState();
       return;
     }
 
-    const events = readAllEvents();
+    const allEvents = readAllEvents();
     const threshold = isAuto ? MIN_EVENTS_AUTO : MIN_EVENTS_FOR_ANALYSIS;
-    if (events.length < threshold) {
-      if (!isAuto) console.log(chalk.dim(`caliber: ${events.length}/${threshold} events recorded — need more before analysis`));
+    if (allEvents.length < threshold) {
+      if (!isAuto) console.log(chalk.dim(`caliber: ${allEvents.length}/${threshold} events recorded — need more before analysis`));
       return;
     }
 
@@ -151,8 +183,19 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
 
     migrateInlineLearnings();
 
+    // For incremental analysis, only analyze events after the last analysis point
+    const state = readState();
+    const analysisOffset = isIncremental ? (state.lastAnalysisEventCount || 0) : 0;
+    const events = analysisOffset > 0 ? allEvents.slice(analysisOffset) : allEvents;
+
+    if (events.length < threshold) {
+      if (!isAuto) console.log(chalk.dim(`caliber: ${events.length}/${threshold} new events since last analysis — need more`));
+      return;
+    }
+
     const existingConfigs = readExistingConfigs(process.cwd());
     const existingLearnedSection = readLearnedSection();
+    const existingPersonalLearnings = readPersonalLearnings();
     const existingSkills = existingConfigs.claudeSkills || [];
 
     const response = await analyzeEvents(
@@ -160,11 +203,12 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
       existingConfigs.claudeMd || '',
       existingLearnedSection,
       existingSkills,
+      existingPersonalLearnings,
     );
 
     analyzed = true;
 
-    const waste = calculateSessionWaste(events);
+    const waste = calculateSessionWaste(allEvents);
     const existingLearnedItems = existingLearnedSection
       ? existingLearnedSection.split('\n').filter(l => l.startsWith('- ')).length
       : 0;
@@ -197,10 +241,11 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
           }
         }
 
-        // Record per-learning cost entries
+        // Record per-learning cost entries with explanations
         const wastePerLearning = Math.round(waste.totalWasteTokens / result.newItemCount);
         const TYPE_RE = /^\*\*\[([^\]]+)\]\*\*/;
-        const learningEntries: LearningCostEntry[] = result.newItems.map(item => {
+        const explanations = response.explanations || [];
+        const learningEntries: LearningCostEntry[] = result.newItems.map((item, idx) => {
           const clean = item.replace(/^- /, '');
           const typeMatch = clean.match(TYPE_RE);
           return {
@@ -209,6 +254,7 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
             summary: clean.replace(TYPE_RE, '').trim().slice(0, 80),
             wasteTokens: wastePerLearning,
             sourceEventCount: events.length,
+            explanation: explanations[idx] || null,
           };
         });
 
@@ -238,8 +284,8 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
     // Record session ROI summary + learnings in a single write
     const sessionSummary: SessionROISummary = {
       timestamp: new Date().toISOString(),
-      sessionId: readState().sessionId || 'unknown',
-      eventCount: events.length,
+      sessionId: state.sessionId || 'unknown',
+      eventCount: allEvents.length,
       failureCount: waste.failureCount,
       promptCount: waste.promptCount,
       wasteSeconds: Math.round(waste.totalWasteSeconds),
@@ -253,9 +299,27 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
     };
     const roiStats = recordSession(sessionSummary, roiLearningEntries);
 
+    // Attribution: match existing learnings against session failure events
+    if (roiStats.learnings.length > 0 && waste.failureCount > 0) {
+      const failureEvents = allEvents.filter(
+        e => e.hook_event_name === 'PostToolUseFailure'
+      ) as ToolEvent[];
+
+      let attribution = matchLearningsToFailures(roiStats.learnings, failureEvents);
+
+      if (attribution.matchedIndices.length === 0 && failureEvents.length > 0) {
+        attribution = await semanticMatchFallback(roiStats.learnings, failureEvents);
+      }
+
+      if (attribution.matchedIndices.length > 0) {
+        updateActivations(roiStats, attribution.matchedIndices);
+        writeROIStats(roiStats);
+      }
+    }
+
     // Emit PostHog events
     trackLearnSessionAnalyzed({
-      eventCount: events.length,
+      eventCount: allEvents.length,
       failureCount: waste.failureCount,
       correctionCount: waste.promptCount,
       hadLearningsAvailable: hadLearnings,
@@ -284,15 +348,25 @@ export async function learnFinalizeCommand(options?: { force?: boolean; auto?: b
       learningCount: roiStats.learnings.length,
     });
 
+    // Check for stale learnings (never activated after enough sessions)
+    if (!isIncremental) {
+      const staleLearnings = findStaleLearnings(roiStats);
+      if (staleLearnings.length > 0 && !isAuto) {
+        console.log(chalk.yellow(`caliber: ${staleLearnings.length} learning${staleLearnings.length === 1 ? '' : 's'} never activated — run \`${resolveCaliber()} learn list --verbose\` to review`));
+      }
+    }
+
     // Show savings summary if we have history
     if (!isAuto && t.estimatedSavingsTokens > 0) {
       const totalLearnings = existingLearnedItems + newLearningsProduced;
       console.log(chalk.dim(`caliber: ${totalLearnings} learnings active — est. ~${t.estimatedSavingsTokens.toLocaleString()} tokens saved across ${t.totalSessionsWithLearnings} sessions`));
     }
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
     if (options?.force && !isAuto) {
-      console.error(chalk.red('caliber: finalize failed —'), err instanceof Error ? err.message : err);
+      console.error(chalk.red('caliber: finalize failed —'), errorMsg);
     }
+    writeFinalizeError(errorMsg);
   } finally {
     if (analyzed) {
       if (isIncremental) {
@@ -335,7 +409,7 @@ export async function learnInstallCommand() {
 
   if (!fs.existsSync('.claude') && !fs.existsSync('.cursor')) {
     console.log(chalk.yellow('No .claude/ or .cursor/ directory found.'));
-    console.log(chalk.dim('  Run `caliber init` first, or create the directory manually.'));
+    console.log(chalk.dim(`  Run \`${resolveCaliber()} init\` first, or create the directory manually.`));
     return;
   }
 
@@ -387,7 +461,7 @@ export async function learnStatusCommand() {
   }
 
   if (!claudeInstalled && !cursorInstalled) {
-    console.log(chalk.dim('  Run `caliber learn install` to enable session learning.'));
+    console.log(chalk.dim(`  Run \`${resolveCaliber()} learn install\` to enable session learning.`));
   }
 
   console.log();
@@ -398,6 +472,16 @@ export async function learnStatusCommand() {
     console.log(`Last analysis: ${chalk.cyan(state.lastAnalysisTimestamp)}`);
   } else {
     console.log(`Last analysis: ${chalk.dim('none')}`);
+  }
+
+  const lastError = readFinalizeError();
+  if (lastError) {
+    console.log(`Last error: ${chalk.red(lastError.error)}`);
+    console.log(chalk.dim(`  at ${lastError.timestamp}`));
+    const logPath = path.join(getLearningDir(), LEARNING_FINALIZE_LOG);
+    if (fs.existsSync(logPath)) {
+      console.log(chalk.dim(`  Full log: ${logPath}`));
+    }
   }
 
   const learnedSection = readLearnedSection();
@@ -414,5 +498,153 @@ export async function learnStatusCommand() {
     for (const line of roiSummary.split('\n').slice(1)) {
       console.log(line);
     }
+  }
+}
+
+interface LearningItem {
+  text: string;
+  source: 'project' | 'personal';
+  index: number;
+}
+
+function getAllLearnings(): LearningItem[] {
+  const items: LearningItem[] = [];
+  let idx = 0;
+
+  const projectSection = readLearnedSection();
+  if (projectSection) {
+    for (const line of projectSection.split('\n').filter(l => l.startsWith('- '))) {
+      items.push({ text: line, source: 'project', index: idx++ });
+    }
+  }
+
+  const personalSection = readPersonalLearnings();
+  if (personalSection) {
+    for (const line of personalSection.split('\n').filter(l => l.startsWith('- '))) {
+      items.push({ text: line, source: 'personal', index: idx++ });
+    }
+  }
+
+  return items;
+}
+
+export async function learnListCommand(options?: { verbose?: boolean }) {
+  const items = getAllLearnings();
+
+  if (items.length === 0) {
+    console.log(chalk.dim(`No learnings yet. Run \`${resolveCaliber()} learn install\` to start.`));
+    return;
+  }
+
+  const roiStats = options?.verbose ? readROIStats() : null;
+
+  console.log(chalk.bold(`\n  Learnings (${items.length})\n`));
+
+  for (const item of items) {
+    const tag = item.source === 'personal' ? chalk.magenta('[personal]') : chalk.blue('[project]');
+    const display = item.text.replace(/^- /, '').slice(0, 100);
+    console.log(`  ${chalk.dim(String(item.index + 1).padStart(2, ' '))}. ${tag} ${display}`);
+
+    if (options?.verbose && roiStats) {
+      const match = roiStats.learnings.find(l => display.includes(l.summary.slice(0, 40)));
+      if (match) {
+        const activations = match.activationCount ?? 0;
+        const stale = activations === 0 && roiStats.sessions.length >= 10;
+        const activationLabel = stale
+          ? chalk.yellow(`${activations} activations [stale]`)
+          : chalk.dim(`${activations} activation${activations === 1 ? '' : 's'}`);
+        console.log(`      ${activationLabel}`);
+        if (match.explanation) {
+          console.log(`      ${chalk.dim('Why: ' + match.explanation.slice(0, 80))}`);
+        }
+      }
+    }
+  }
+  console.log('');
+}
+
+export async function learnDeleteCommand(indexStr: string) {
+  const index = parseInt(indexStr, 10);
+  if (isNaN(index) || index < 1) {
+    console.log(chalk.red(`Invalid index: "${indexStr}". Use a number from \`${resolveCaliber()} learn list\`.`));
+    return;
+  }
+
+  const items = getAllLearnings();
+  const targetIdx = index - 1; // User sees 1-based
+
+  if (targetIdx >= items.length) {
+    console.log(chalk.red(`Index ${index} is out of range. You have ${items.length} learnings.`));
+    return;
+  }
+
+  const item = items[targetIdx];
+  const filePath = item.source === 'personal'
+    ? PERSONAL_LEARNINGS_FILE
+    : 'CALIBER_LEARNINGS.md';
+
+  if (!fs.existsSync(filePath)) {
+    console.log(chalk.red('Learnings file not found.'));
+    return;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+
+  // Find which bullet within this file corresponds to our item
+  const bulletsOfSource = items.filter(i => i.source === item.source);
+  const posInFile = bulletsOfSource.indexOf(item);
+
+  // Find the Nth bullet line in the file
+  let bulletsSeen = 0;
+  let lineToRemove = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('- ')) {
+      if (bulletsSeen === posInFile) {
+        lineToRemove = i;
+        break;
+      }
+      bulletsSeen++;
+    }
+  }
+
+  if (lineToRemove === -1) {
+    console.log(chalk.red('Could not locate learning in file.'));
+    return;
+  }
+
+  const bulletToRemove = lines[lineToRemove];
+  const newLines = lines.filter((_, i) => i !== lineToRemove);
+  fs.writeFileSync(filePath, newLines.join('\n'));
+
+  if (item.source === 'personal') {
+    fs.chmodSync(filePath, 0o600);
+  }
+
+  // Clean up corresponding ROI stats entry
+  const roiStats = readROIStats();
+  const cleanText = bulletToRemove.replace(/^- /, '').replace(/^\*\*\[[^\]]+\]\*\*\s*/, '').trim();
+  const roiIdx = roiStats.learnings.findIndex(l => cleanText.includes(l.summary.slice(0, 30)));
+  if (roiIdx !== -1) {
+    roiStats.learnings.splice(roiIdx, 1);
+    writeROIStats(roiStats);
+  }
+
+  console.log(chalk.green('✓') + ` Removed: ${bulletToRemove.replace(/^- /, '').slice(0, 80)}`);
+}
+
+export async function learnAddCommand(content: string, options: { personal?: boolean }) {
+  if (!content.trim()) {
+    console.log(chalk.yellow('Please provide learning content.'));
+    throw new Error('__exit__');
+  }
+
+  const scope = options.personal ? 'personal' : 'project';
+  const result = addLearning(content.trim(), scope);
+
+  if (result.added) {
+    console.log(chalk.green('✓') + ` Learning saved to ${result.file}`);
+  } else {
+    console.log(chalk.dim('  Similar learning already exists — skipped.'));
   }
 }

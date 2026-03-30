@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { execFileSync } from 'child_process';
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
@@ -17,9 +16,13 @@ vi.mock('../../lib/state.js', () => ({
 vi.mock('../../telemetry/events.js', () => ({
   trackScoreComputed: vi.fn(),
 }));
+vi.mock('../../scoring/history.js', () => ({
+  recordScore: vi.fn(),
+}));
 
 import { scoreCommand } from '../score.js';
 import { computeLocalScore } from '../../scoring/index.js';
+import { execFileSync } from 'child_process';
 
 const mockComputeLocalScore = computeLocalScore as ReturnType<typeof vi.fn>;
 const mockExecFileSync = execFileSync as unknown as ReturnType<typeof vi.fn>;
@@ -95,8 +98,12 @@ describe('score --compare', () => {
     // Current score works, but base scoring throws (simulating scoreBaseRef returning null)
     mockComputeLocalScore
       .mockReturnValueOnce({ score: 87, grade: 'A', checks: [] })
-      .mockImplementationOnce(() => { throw new Error('scoring failed'); });
-    mockExecFileSync.mockImplementation(() => { throw new Error('fatal: not a valid ref'); });
+      .mockImplementationOnce(() => {
+        throw new Error('scoring failed');
+      });
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('fatal: not a valid ref');
+    });
 
     await scoreCommand({ compare: 'nonexistent-branch' });
 
@@ -130,7 +137,9 @@ describe('score --compare', () => {
       .mockReturnValueOnce({ score: 0, grade: 'F', checks: [] });
 
     // git show/ls-tree throw for all files (none exist in base)
-    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('not found');
+    });
 
     await scoreCommand({ quiet: true, compare: 'main' });
 

@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "caliber learn finalize",
-            "description": "Caliber: finalizing session learnings"
+            "command": "caliber refresh --quiet",
+            "description": "Caliber: auto-refreshing docs based on code changes"
           }
         ]
       },
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/alonpe/.nvm/versions/node/v20.19.4/bin/caliber learn finalize --auto",
+            "command": "caliber learn finalize --auto",
             "description": "Caliber: finalizing session learnings"
           }
         ]
@@ -52,8 +52,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/alonpe/.nvm/versions/node/v20.19.4/bin/caliber learn observe --prompt",
+            "command": "caliber learn observe --prompt",
             "description": "Caliber: recording user prompt for correction detection"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/caliber-check-sync.sh",
+            "description": "Caliber: offer setup if not configured"
           }
         ]
       }
@@ -61,10 +73,9 @@
   },
   "permissions": {
     "allow": [
+      "Bash(git *)",
       "Bash(npm run *)",
-      "Bash(npx vitest *)",
-      "Bash(npx tsc *)",
-      "Bash(git *)"
+      "Bash(npx *)"
     ]
   }
 }

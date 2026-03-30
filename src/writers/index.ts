@@ -2,33 +2,34 @@ import fs from 'fs';
 import { writeClaudeConfig } from './claude/index.js';
 import { writeCursorConfig } from './cursor/index.js';
 import { writeCodexConfig } from './codex/index.js';
+import { writeGithubCopilotConfig } from './github-copilot/index.js';
+import { writeOpencodeConfig } from './opencode/index.js';
 import { createBackup, restoreBackup } from './backup.js';
-import {
-  readManifest,
-  writeManifest,
-  fileChecksum,
-  type Manifest,
-  type ManifestEntry,
-} from './manifest.js';
+import { ensureBuiltinSkills } from '../lib/builtin-skills.js';
+import { MANIFEST_FILE } from '../constants.js';
+import { readManifest, writeManifest, fileChecksum, type ManifestEntry } from './manifest.js';
 
-interface AgentSetup {
-  targetAgent: ('claude' | 'cursor' | 'codex')[];
+export interface AgentSetup {
+  targetAgent: ('claude' | 'cursor' | 'codex' | 'opencode' | 'github-copilot')[];
   deletions?: Array<{ filePath: string; reason: string }>;
   claude?: Parameters<typeof writeClaudeConfig>[0];
   cursor?: Parameters<typeof writeCursorConfig>[0];
   codex?: Parameters<typeof writeCodexConfig>[0];
+  opencode?: Parameters<typeof writeOpencodeConfig>[0];
+  copilot?: Parameters<typeof writeGithubCopilotConfig>[0];
 }
 
-export function writeSetup(setup: AgentSetup): { written: string[]; deleted: string[]; backupDir?: string } {
+export function writeSetup(setup: AgentSetup): {
+  written: string[];
+  deleted: string[];
+  backupDir?: string;
+} {
   const filesToWrite = getFilesToWrite(setup);
   const filesToDelete = (setup.deletions || [])
-    .map(d => d.filePath)
-    .filter(f => fs.existsSync(f));
+    .map((d) => d.filePath)
+    .filter((f) => fs.existsSync(f));
 
-  const existingFiles = [
-    ...filesToWrite.filter(f => fs.existsSync(f)),
-    ...filesToDelete,
-  ];
+  const existingFiles = [...filesToWrite.filter((f) => fs.existsSync(f)), ...filesToDelete];
   const backupDir = existingFiles.length > 0 ? createBackup(existingFiles) : undefined;
 
   const written: string[] = [];
@@ -45,22 +46,33 @@ export function writeSetup(setup: AgentSetup): { written: string[]; deleted: str
     written.push(...writeCodexConfig(setup.codex));
   }
 
+  if (setup.targetAgent.includes('opencode') && setup.opencode) {
+    const agentsMdAlreadyWritten = written.includes('AGENTS.md');
+    written.push(...writeOpencodeConfig(setup.opencode, agentsMdAlreadyWritten));
+  }
+
+  if (setup.targetAgent.includes('github-copilot') && setup.copilot) {
+    written.push(...writeGithubCopilotConfig(setup.copilot));
+  }
+
   const deleted: string[] = [];
   for (const filePath of filesToDelete) {
     fs.unlinkSync(filePath);
     deleted.push(filePath);
   }
 
+  written.push(...ensureBuiltinSkills());
+
   ensureGitignore();
 
   const entries: ManifestEntry[] = [
-    ...written.map(file => ({
+    ...written.map((file) => ({
       path: file,
-      action: existingFiles.includes(file) ? 'modified' as const : 'created' as const,
+      action: existingFiles.includes(file) ? ('modified' as const) : ('created' as const),
       checksum: fileChecksum(file),
       timestamp: new Date().toISOString(),
     })),
-    ...deleted.map(file => ({
+    ...deleted.map((file) => ({
       path: file,
       action: 'deleted' as const,
       checksum: '',
@@ -95,7 +107,6 @@ export function undoSetup(): { restored: string[]; removed: string[] } {
     }
   }
 
-  const { MANIFEST_FILE } = require('../constants.js');
   if (fs.existsSync(MANIFEST_FILE)) {
     fs.unlinkSync(MANIFEST_FILE);
   }
@@ -103,7 +114,7 @@ export function undoSetup(): { restored: string[]; removed: string[] } {
   return { restored, removed };
 }
 
-function getFilesToWrite(setup: AgentSetup): string[] {
+export function getFilesToWrite(setup: AgentSetup): string[] {
   const files: string[] = [];
 
   if (setup.targetAgent.includes('claude') && setup.claude) {
@@ -111,7 +122,7 @@ function getFilesToWrite(setup: AgentSetup): string[] {
     if (setup.claude.mcpServers) files.push('.mcp.json');
     if (setup.claude.skills) {
       for (const s of setup.claude.skills) {
-        files.push(`.claude/skills/${s.name.replace(/[^a-z0-9-]/gi, '-').toLowerCase()}.md`);
+        files.push(`.claude/skills/${s.name.replace(/[^a-z0-9-]/gi, '-').toLowerCase()}/SKILL.md`);
       }
     }
   }
@@ -131,6 +142,23 @@ function getFilesToWrite(setup: AgentSetup): string[] {
     files.push('AGENTS.md');
     if (setup.codex.skills) {
       for (const s of setup.codex.skills) files.push(`.agents/skills/${s.name}/SKILL.md`);
+    }
+  }
+
+  if (setup.targetAgent.includes('opencode') && setup.opencode) {
+    if (!setup.targetAgent.includes('codex')) {
+      files.push('AGENTS.md');
+    }
+    if (setup.opencode.skills) {
+      for (const s of setup.opencode.skills) files.push(`.opencode/skills/${s.name}/SKILL.md`);
+    }
+  }
+
+  if (setup.targetAgent.includes('github-copilot') && setup.copilot) {
+    if (setup.copilot.instructions) files.push('.github/copilot-instructions.md');
+    if (setup.copilot.instructionFiles) {
+      for (const f of setup.copilot.instructionFiles)
+        files.push(`.github/instructions/${f.filename}`);
     }
   }
 

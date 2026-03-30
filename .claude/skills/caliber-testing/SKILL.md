@@ -1,173 +1,209 @@
 ---
 name: caliber-testing
-description: Vitest testing patterns for @rely-ai/caliber. Global LLM mocks in src/test/setup.ts, coverage config in vitest.config.ts, temp dir patterns for scoring tests. Use when writing or fixing tests, mocking llmCall/llmJsonCall, or testing scoring checks with fs. Do NOT use for integration or live API tests.
+description: Writes Vitest tests following project patterns: __tests__/ directories, vi.mock() for module mocking, global LLM mock from src/test/setup.ts, environment variable save/restore, and test file organization. Use when user says 'write tests', 'add test coverage', 'test this', creates *.test.ts files, or when test failures appear in CI. Do NOT use for non-test code or for debugging without writing tests.
 ---
-# Caliber Testing
+# caliber-testing
 
 ## Critical
 
-1. **All tests must use the global LLM mock setup** in `src/test/setup.ts`. Never call real APIs in tests.
-2. **Mock `llmCall` and `llmJsonCall`** using `vi.mocked()` from Vitest. Default mock returns `{ message: { content: [{ type: 'text', text: '{}' }] } }`.
-3. **Use `memfs` for file-system tests** in scoring checks. Real fs mutations break parallel test runs.
-4. **Verify test isolation**: Each test should clean up mocks with `vi.clearAllMocks()` or use `beforeEach`.
+- **Test file location**: Always place tests in `__tests__/` subdirectory of the module being tested. File name: `module-name.test.ts`. Example: `src/llm/__tests__/anthropic.test.ts` for `src/llm/anthropic.ts`.
+- **Global LLM mock**: Use the mock from `src/test/setup.ts`. It is auto-loaded by Vitest. Do NOT create duplicate LLM mocks in individual test files.
+- **Avoid over-mocking**: Mock only external dependencies (HTTP, file I/O, LLM calls). Never mock internal modules or pure logic.
+- **Environment cleanup**: Always save and restore `process.env` between tests to prevent cross-test pollution. Use the pattern in Step 4.
+- **No hardcoded test data**: Use `beforeEach` to set up fresh mocks and env state for each test.
 
 ## Instructions
 
-1. **Create test file in the appropriate `__tests__` directory**.
-   - Pattern: `src/<module>/__tests__/<feature>.test.ts`
-   - Example: `src/scoring/checks/__tests__/existence.test.ts`, `src/llm/__tests__/anthropic.test.ts`
-   - Verify: File exists and imports from `vitest`.
-
-2. **Import test utilities and setup**.
-   ```typescript
-   import { describe, it, expect, beforeEach, vi } from 'vitest';
-   import { llmCall, llmJsonCall } from '../../llm';
-   ```
-   - If testing file operations, import: `import { fs } from 'memfs'` and `import { vol } from 'memfs'`
-   - Verify: All mocks are resolved from `src/test/setup.ts` (auto-loaded by vitest.config.ts).
-
-3. **Set up test suite with describe block and beforeEach cleanup**.
-   ```typescript
-   describe('Feature Name', () => {
-     beforeEach(() => {
-       vi.clearAllMocks();
-     });
-   ```
-   - Verify: Mock state is fresh before each test.
-
-4. **Mock LLM responses using `vi.mocked(llmCall).mockResolvedValueOnce()`**.
-   ```typescript
-   vi.mocked(llmCall).mockResolvedValueOnce({
-     message: {
-       content: [{ type: 'text', text: '{"key": "value"}' }],
-     },
-   });
-   ```
-   - For `llmJsonCall`: Mock the resolved JSON object directly (e.g., `{ skills: [...] }`).
-   - Verify: Mock is set *before* function call; use `.mockResolvedValueOnce()` for sequence.
-
-5. **For fs tests, use memfs vol and isolation**.
-   ```typescript
-   import { vol } from 'memfs';
-   
-   beforeEach(() => {
-     vol.reset();
-     vol.mkdirSync('/test', { recursive: true });
-   });
-   
-   afterEach(() => {
-     vol.reset();
-   });
-   ```
-   - Pass `fs` instance to functions that accept it (scoring checks use `fs` parameter).
-   - Verify: `vol.reset()` clears all files before and after each test.
-
-6. **Assert using standard Vitest matchers**.
-   - For objects: `expect(result).toEqual({ ... })`
-   - For errors: `expect(() => fn()).toThrow('message')`
-   - For calls: `expect(vi.mocked(llmCall)).toHaveBeenCalledWith(...)`
-   - Verify: Assertion runs and passes.
-
-7. **Run tests locally before committing**.
-   ```bash
-   npm run test                    # Run all
-   npm run test:watch             # Watch mode
-   npm run test -- --grep "Feature Name"  # Single suite
-   npm run test:coverage          # v8 report → coverage/
-   ```
-   - Verify: All tests pass and coverage is acceptable (target: >80%).
-
-## Examples
-
-### Example 1: Testing an LLM-based Function
-**User says**: "Test that `generateSkill` calls llmJsonCall and returns parsed skills."
-
-**File**: `src/ai/__tests__/generate.test.ts`
+### Step 1: Set up the test file structure
+Create `src/<module>/__tests__/<module-name>.test.ts`. Import `describe`, `it`, `expect`, `beforeEach`, `afterEach` from `vitest`, and import the module under test.
 
 ```typescript
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { llmJsonCall } from '../../llm';
-import { generateSkill } from '../generate';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { functionToTest } from '../module-name.js';
+```
 
-describe('generateSkill', () => {
+Verify: The test file is in the correct `__tests__/` directory parallel to the module it tests.
+
+### Step 2: Mock external dependencies with vi.mock()
+At the top of the test file, before `describe`, mock external modules using `vi.mock()`. This applies to:
+- HTTP calls (use `vi.mock()` to intercept fetch or axios)
+- File I/O (use `vi.mock('fs')` or similar)
+- LLM providers (already mocked globally via `src/test/setup.ts`, but document the assumption)
+
+Example:
+```typescript
+vi.mock('fs', () => ({
+  readFileSync: vi.fn(() => 'mock content'),
+}));
+```
+
+Verify: All external dependencies are mocked. Internal module calls are NOT mocked.
+
+### Step 3: Use beforeEach and afterEach for setup and cleanup
+For each test suite, create `beforeEach` to reset mocks and set up test state. Create `afterEach` to clean up.
+
+```typescript
+describe('module-name', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should call llmJsonCall and return skills', async () => {
-    const mockSkills = [
-      { name: 'test-skill', description: 'A test skill' },
-    ];
-    vi.mocked(llmJsonCall).mockResolvedValueOnce(mockSkills);
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
 
-    const result = await generateSkill({ context: 'test' });
-
-    expect(result).toEqual(mockSkills);
-    expect(vi.mocked(llmJsonCall)).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: expect.any(String) })
-    );
+  it('should do something', () => {
+    // test body
   });
 });
 ```
 
-**Result**: Test mocks the LLM, verifies function calls it, and asserts return value.
+Verify: `vi.clearAllMocks()` is called in `beforeEach` to reset mock call counts.
 
-### Example 2: Testing a Scoring Check with fs
-**User says**: "Test that the existence check detects missing CLAUDE.md."
-
-**File**: `src/scoring/checks/__tests__/existence.test.ts`
+### Step 4: Save and restore process.env for env-dependent tests
+If a test modifies `process.env`, save the original state and restore it. Use this pattern:
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { vol } from 'memfs';
-import { checkExistence } from '../existence';
-import { fs } from 'memfs';
+describe('env-dependent module', () => {
+  const originalEnv = process.env;
 
-describe('checkExistence', () => {
   beforeEach(() => {
-    vol.reset();
-    vol.mkdirSync('/test', { recursive: true });
+    process.env = { ...originalEnv };
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
-    vol.reset();
+    process.env = originalEnv;
+    vi.resetAllMocks();
   });
 
-  it('should fail if CLAUDE.md does not exist', () => {
-    const result = checkExistence({
-      cwd: '/test',
-      fs,
-    });
-    expect(result.passed).toBe(false);
-    expect(result.message).toContain('CLAUDE.md');
-  });
-
-  it('should pass if CLAUDE.md exists', () => {
-    vol.writeFileSync('/test/CLAUDE.md', '# CLAUDE');
-    const result = checkExistence({
-      cwd: '/test',
-      fs,
-    });
-    expect(result.passed).toBe(true);
+  it('should read from process.env.VARIABLE', () => {
+    process.env.VARIABLE = 'test-value';
+    // test assertion
   });
 });
 ```
 
-**Result**: Uses memfs to test file checks without touching real fs; isolation prevents cross-test contamination.
+Verify: `process.env` is restored to its original state after each test.
+
+### Step 5: Write assertions that match project conventions
+Use `expect()` with clear matchers. For async functions, use `await` or `.resolves`.
+
+```typescript
+it('should return the expected value', async () => {
+  const result = await functionToTest('input');
+  expect(result).toEqual({ key: 'value' });
+});
+
+it('should throw on invalid input', async () => {
+  await expect(functionToTest(null)).rejects.toThrow('Invalid input');
+});
+```
+
+Verify: Assertions are specific (not just checking truthiness) and async functions use `await` or `.resolves`.
+
+### Step 6: Run and verify the tests
+Run the specific test file to ensure it passes:
+```bash
+npm run test -- src/<module>/__tests__/<module-name>.test.ts
+```
+
+Or run all tests:
+```bash
+npm run test
+```
+
+Verify: All tests pass. Check test coverage with `npm run test -- --coverage`.
+
+## Examples
+
+### Example: Testing an LLM provider module
+
+User says: "Write tests for src/llm/anthropic.ts"
+
+**Actions:**
+1. Create `src/llm/__tests__/anthropic.test.ts`
+2. Import `describe`, `it`, `expect`, `beforeEach`, `afterEach`, `vi` from vitest
+3. Mock external HTTP calls (fetch is mocked globally via setup)
+4. Write tests for `call()` and `stream()` methods
+5. Save/restore `process.env` for API key tests
+6. Run: `npm run test -- src/llm/__tests__/anthropic.test.ts`
+
+**Result:**
+```typescript
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { AnthropicProvider } from '../anthropic.js';
+
+describe('AnthropicProvider', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, ANTHROPIC_API_KEY: 'test-key' };
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    vi.resetAllMocks();
+  });
+
+  it('should call the API with correct parameters', async () => {
+    const provider = new AnthropicProvider();
+    const response = await provider.call({ messages: [{ role: 'user', content: 'test' }] });
+    expect(response).toBeDefined();
+  });
+});
+```
+
+### Example: Testing a utility function
+
+User says: "Add tests for src/utils/sanitize.ts"
+
+**Actions:**
+1. Create `src/utils/__tests__/sanitize.test.ts`
+2. Import the sanitize function
+3. Write tests for different input types
+4. No mocking needed (pure logic)
+5. Run: `npm run test -- src/utils/__tests__/sanitize.test.ts`
+
+**Result:**
+```typescript
+import { describe, it, expect } from 'vitest';
+import { sanitize } from '../sanitize.js';
+
+describe('sanitize', () => {
+  it('should remove dangerous characters', () => {
+    expect(sanitize('<script>alert()</script>')).toEqual('scriptalert()script');
+  });
+
+  it('should handle null input', () => {
+    expect(sanitize(null)).toEqual('');
+  });
+});
+```
 
 ## Common Issues
 
-**Issue**: "ReferenceError: llmCall is not defined in test."
-- **Fix**: Verify `src/test/setup.ts` is loaded. Check `vitest.config.ts` has `setupFiles: ['./src/test/setup.ts']`. Run `npm run test` (not `node test.ts`).
+**Issue: "Cannot find module" error when importing from test**
+- **Cause**: Missing `.js` extension in ESM imports
+- **Fix**: Ensure all imports in test files use `.js` extension: `import { foo } from '../module.js'`
 
-**Issue**: "ENOENT: no such file or directory, open '/real/path'" during fs test.
-- **Fix**: You are using real `fs` instead of `memfs`. Change imports: `import { fs } from 'memfs'`. Call `vol.mkdirSync()` before test. Verify function signature accepts `fs` parameter.
+**Issue: "process.env.VARIABLE is undefined" in tests**
+- **Cause**: Environment variable not set up in test or not restored properly
+- **Fix**: Use the save/restore pattern from Step 4. Set `process.env.VARIABLE = 'value'` in `beforeEach`.
 
-**Issue**: "Mock is not being called / test is calling real API."
-- **Fix**: Ensure mock is set *before* async call: `await vi.mocked(llmCall).mockResolvedValueOnce(...)` must come before `await functionUnderTest()`. Use `.mockResolvedValueOnce()` (not `.mockResolvedValue()`) if testing multiple calls in sequence.
+**Issue: "vi.mock is not defined" or mock not working**
+- **Cause**: Attempting to mock after imports, or mocking an already-imported module
+- **Fix**: Call `vi.mock()` at the top of the file, before any imports of the mocked module.
 
-**Issue**: "Test passes locally but fails in CI / parallel runs fail."
-- **Fix**: Missing `vi.clearAllMocks()` in `beforeEach`. Missing `vol.reset()` for fs tests. Ensure no global state mutations. Run `npm run test -- --reporter=verbose` to see isolation issues.
+**Issue: Tests pass locally but fail in CI**
+- **Cause**: Mock state or env vars not cleaned up between tests
+- **Fix**: Add `vi.clearAllMocks()` in `beforeEach` and restore `process.env` in `afterEach`.
 
-**Issue**: "Coverage shows untested lines in scoring check."
-- **Fix**: Add test case for error path: `expect(() => checkX({ invalid: true })).toThrow()`. Mock both happy and sad paths. Run `npm run test:coverage` to identify gaps.
+**Issue: "Timeout of 5000ms exceeded"**
+- **Cause**: Async test or mock not resolving
+- **Fix**: Ensure mocks return resolved promises. Use `vi.fn().mockResolvedValue()` for async mocks.
+
+**Issue: Tests reference global LLM mock but it's not available**
+- **Cause**: Test setup not loading `src/test/setup.ts`
+- **Fix**: Verify `vitest.config.ts` includes `setupFiles: ['src/test/setup.ts']`. This is already configured in the project.

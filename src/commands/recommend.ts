@@ -2,15 +2,16 @@ import chalk from 'chalk';
 import ora from 'ora';
 import select from '@inquirer/select';
 import { mkdirSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { collectFingerprint, Fingerprint } from '../fingerprint/index.js';
 import { scanLocalState } from '../scanner/index.js';
 import { llmJsonCall } from '../llm/index.js';
 import { loadConfig, getFastModel } from '../llm/config.js';
 import { trackSkillsInstalled } from '../telemetry/events.js';
 import { readState } from '../lib/state.js';
+import { resolveCaliber } from '../lib/resolve-caliber.js';
 
-type Platform = 'claude' | 'cursor' | 'codex';
+type Platform = 'claude' | 'cursor' | 'codex' | 'opencode' | 'github-copilot';
 
 export interface SkillResult {
   name: string;
@@ -37,19 +38,36 @@ function detectLocalPlatforms(): Platform[] {
   return platforms.size > 0 ? Array.from(platforms) : ['claude'];
 }
 
+function sanitizeSlug(slug: string): string {
+  return slug.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+|-+$/g, '');
+}
+
 function getSkillPath(platform: Platform, slug: string): string {
-  if (platform === 'cursor') {
-    return join('.cursor', 'skills', slug, 'SKILL.md');
+  const safe = sanitizeSlug(slug);
+  if (!safe) throw new Error(`Invalid skill slug: "${slug}"`);
+
+  const baseDir =
+    platform === 'cursor'
+      ? join('.cursor', 'skills')
+      : platform === 'codex'
+        ? join('.agents', 'skills')
+        : platform === 'opencode'
+          ? join('.opencode', 'skills')
+          : join('.claude', 'skills');
+
+  const cwd = process.cwd();
+  const fullPath = resolve(cwd, baseDir, safe, 'SKILL.md');
+  if (!fullPath.startsWith(resolve(cwd, baseDir) + '/')) {
+    throw new Error(`Skill path escapes base directory: "${slug}"`);
   }
-  if (platform === 'codex') {
-    return join('.agents', 'skills', slug, 'SKILL.md');
-  }
-  return join('.claude', 'skills', slug, 'SKILL.md');
+
+  return join(baseDir, safe, 'SKILL.md');
 }
 
 function getSkillDir(platform: Platform): string {
   if (platform === 'cursor') return join(process.cwd(), '.cursor', 'skills');
   if (platform === 'codex') return join(process.cwd(), '.agents', 'skills');
+  if (platform === 'opencode') return join(process.cwd(), '.opencode', 'skills');
   return join(process.cwd(), '.claude', 'skills');
 }
 
@@ -65,7 +83,9 @@ function getInstalledSkills(platforms: Platform[]): Set<string> {
           installed.add(entry.name.toLowerCase());
         }
       }
-    } catch { /* dir doesn't exist */ }
+    } catch {
+      /* dir doesn't exist */
+    }
   }
 
   return installed;
@@ -79,12 +99,21 @@ async function searchSkillsSh(technologies: string[]): Promise<SkillResult[]> {
 
   for (const tech of technologies) {
     try {
-      const resp = await fetch(`https://skills.sh/api/search?q=${encodeURIComponent(tech)}&limit=10`, {
-        signal: AbortSignal.timeout(10_000),
-      });
+      const resp = await fetch(
+        `https://skills.sh/api/search?q=${encodeURIComponent(tech)}&limit=10`,
+        {
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
       if (!resp.ok) continue;
-      const data = await resp.json() as {
-        skills?: Array<{ skillId: string; name: string; source: string; installs?: number; description?: string }>;
+      const data = (await resp.json()) as {
+        skills?: Array<{
+          skillId: string;
+          name: string;
+          source: string;
+          installs?: number;
+          description?: string;
+        }>;
       };
       if (!data.skills?.length) continue;
 
@@ -111,7 +140,8 @@ async function searchSkillsSh(technologies: string[]): Promise<SkillResult[]> {
   return Array.from(bestBySlug.values());
 }
 
-const AWESOME_CLAUDE_CODE_URL = 'https://raw.githubusercontent.com/hesreallyhim/awesome-claude-code/main/README.md';
+const AWESOME_CLAUDE_CODE_URL =
+  'https://raw.githubusercontent.com/hesreallyhim/awesome-claude-code/main/README.md';
 
 async function searchAwesomeClaudeCode(technologies: string[]): Promise<SkillResult[]> {
   try {
@@ -122,13 +152,17 @@ async function searchAwesomeClaudeCode(technologies: string[]): Promise<SkillRes
     const markdown = await resp.text();
 
     const items: SkillResult[] = [];
-    const itemPattern = /^[-*]\s+\[([^\]]+)\]\(([^)]+)\)(?:\s+by\s+\[[^\]]*\]\([^)]*\))?\s*[-–—:]\s*(.*)/gm;
+    const itemPattern =
+      /^[-*]\s+\[([^\]]+)\]\(([^)]+)\)(?:\s+by\s+\[[^\]]*\]\([^)]*\))?\s*[-–—:]\s*(.*)/gm;
     let match: RegExpExecArray | null;
 
     while ((match = itemPattern.exec(markdown)) !== null) {
       const [, name, url, description] = match;
       if (url.startsWith('#')) continue;
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
       items.push({
         name: name.trim(),
         slug,
@@ -140,20 +174,21 @@ async function searchAwesomeClaudeCode(technologies: string[]): Promise<SkillRes
       });
     }
 
-    const techLower = technologies.map(t => t.toLowerCase());
-    return items.filter(item => {
+    const techLower = technologies.map((t) => t.toLowerCase());
+    return items.filter((item) => {
       const text = `${item.name} ${item.reason}`.toLowerCase();
-      return techLower.some(t => text.includes(t));
+      return techLower.some((t) => text.includes(t));
     });
   } catch {
     return [];
   }
 }
 
-async function searchAllProviders(technologies: string[], platform?: string): Promise<SkillResult[]> {
-  const searches: Promise<SkillResult[]>[] = [
-    searchSkillsSh(technologies),
-  ];
+async function searchAllProviders(
+  technologies: string[],
+  platform?: string,
+): Promise<SkillResult[]> {
+  const searches: Promise<SkillResult[]>[] = [searchSkillsSh(technologies)];
 
   if (platform === 'claude' || !platform) {
     searches.push(searchAwesomeClaudeCode(technologies));
@@ -214,10 +249,10 @@ Return ONLY the JSON array.`,
   if (!Array.isArray(scored)) return [];
 
   return scored
-    .filter(s => s.score >= 60 && s.index >= 0 && s.index < candidates.length)
+    .filter((s) => s.score >= 60 && s.index >= 0 && s.index < candidates.length)
     .sort((a, b) => b.score - a.score)
     .slice(0, 20)
-    .map(s => ({
+    .map((s) => ({
       ...candidates[s.index],
       score: s.score,
       reason: s.reason || candidates[s.index].reason,
@@ -228,18 +263,24 @@ function buildProjectContext(fingerprint: Fingerprint, platforms: Platform[]): s
   const parts: string[] = [];
 
   if (fingerprint.packageName) parts.push(`Package: ${fingerprint.packageName}`);
-  if (fingerprint.languages.length > 0) parts.push(`Languages: ${fingerprint.languages.join(', ')}`);
-  if (fingerprint.frameworks.length > 0) parts.push(`Frameworks: ${fingerprint.frameworks.join(', ')}`);
+  if (fingerprint.languages.length > 0)
+    parts.push(`Languages: ${fingerprint.languages.join(', ')}`);
+  if (fingerprint.frameworks.length > 0)
+    parts.push(`Frameworks: ${fingerprint.frameworks.join(', ')}`);
   if (fingerprint.description) parts.push(`Description: ${fingerprint.description}`);
 
   // Include top-level file tree (truncated)
   if (fingerprint.fileTree.length > 0) {
-    parts.push(`\nFile tree (${fingerprint.fileTree.length} files):\n${fingerprint.fileTree.slice(0, 50).join('\n')}`);
+    parts.push(
+      `\nFile tree (${fingerprint.fileTree.length} files):\n${fingerprint.fileTree.slice(0, 50).join('\n')}`,
+    );
   }
 
   // Include existing CLAUDE.md summary
   if (fingerprint.existingConfigs.claudeMd) {
-    parts.push(`\nExisting CLAUDE.md (first 500 chars):\n${fingerprint.existingConfigs.claudeMd.slice(0, 500)}`);
+    parts.push(
+      `\nExisting CLAUDE.md (first 500 chars):\n${fingerprint.existingConfigs.claudeMd.slice(0, 500)}`,
+    );
   }
 
   // Include dependency names
@@ -268,19 +309,57 @@ function extractTopDeps(): string[] {
 
     // Exclude utility/tooling packages that produce noisy search results
     const trivial = new Set([
-      'typescript', 'tslib', 'ts-node', 'tsx',
-      'prettier', 'eslint', '@eslint/js',
-      'rimraf', 'cross-env', 'dotenv', 'nodemon',
-      'husky', 'lint-staged', 'commitlint',
-      'chalk', 'ora', 'commander', 'yargs', 'meow',
-      'inquirer', '@inquirer/confirm', '@inquirer/select', '@inquirer/prompts',
-      'glob', 'minimatch', 'micromatch',
-      'diff', 'semver', 'uuid', 'nanoid',
-      'debug', 'ms', 'lodash', 'underscore',
-      'tsup', 'esbuild', 'rollup', 'webpack', 'vite',
-      'vitest', 'jest', 'mocha', 'chai', 'ava',
-      'fs-extra', 'mkdirp', 'del', 'rimraf',
-      'path-to-regexp', 'strip-ansi', 'ansi-colors',
+      'typescript',
+      'tslib',
+      'ts-node',
+      'tsx',
+      'prettier',
+      'eslint',
+      '@eslint/js',
+      'rimraf',
+      'cross-env',
+      'dotenv',
+      'nodemon',
+      'husky',
+      'lint-staged',
+      'commitlint',
+      'chalk',
+      'ora',
+      'commander',
+      'yargs',
+      'meow',
+      'inquirer',
+      '@inquirer/confirm',
+      '@inquirer/select',
+      '@inquirer/prompts',
+      'glob',
+      'minimatch',
+      'micromatch',
+      'diff',
+      'semver',
+      'uuid',
+      'nanoid',
+      'debug',
+      'ms',
+      'lodash',
+      'underscore',
+      'tsup',
+      'esbuild',
+      'rollup',
+      'webpack',
+      'vite',
+      'vitest',
+      'jest',
+      'mocha',
+      'chai',
+      'ava',
+      'fs-extra',
+      'mkdirp',
+      'del',
+      'rimraf',
+      'path-to-regexp',
+      'strip-ansi',
+      'ansi-colors',
     ]);
 
     const trivialPatterns = [
@@ -294,9 +373,7 @@ function extractTopDeps(): string[] {
       /^@commitlint\//,
     ];
 
-    return deps.filter(d =>
-      !trivial.has(d) && !trivialPatterns.some(p => p.test(d))
-    );
+    return deps.filter((d) => !trivial.has(d) && !trivialPatterns.some((p) => p.test(d)));
   } catch {
     return [];
   }
@@ -316,11 +393,11 @@ export async function searchSkills(
 ): Promise<SkillSearchResult> {
   const installedSkills = getInstalledSkills(targetPlatforms);
 
-  const technologies = [...new Set([
-    ...fingerprint.languages,
-    ...fingerprint.frameworks,
-    ...extractTopDeps(),
-  ].filter(Boolean))];
+  const technologies = [
+    ...new Set(
+      [...fingerprint.languages, ...fingerprint.frameworks, ...extractTopDeps()].filter(Boolean),
+    ),
+  ];
 
   if (technologies.length === 0) {
     return { results: [], contentMap: new Map() };
@@ -335,16 +412,19 @@ export async function searchSkills(
     return { results: [], contentMap: new Map() };
   }
 
-  const newCandidates = allCandidates.filter(c => !installedSkills.has(c.slug.toLowerCase()));
+  const newCandidates = allCandidates.filter((c) => !installedSkills.has(c.slug.toLowerCase()));
   if (!newCandidates.length) {
     return { results: [], contentMap: new Map() };
   }
 
-  onStatus?.(`Scoring ${newCandidates.length} candidates...`);
   let results: SkillResult[];
   const config = loadConfig();
 
-  if (config) {
+  if (newCandidates.length <= 5) {
+    onStatus?.('Few candidates — skipping scoring');
+    results = newCandidates.map((c) => ({ ...c, score: 70 }));
+  } else if (config) {
+    onStatus?.(`Scoring ${newCandidates.length} candidates...`);
     try {
       const projectContext = buildProjectContext(fingerprint, targetPlatforms);
       results = await scoreWithLLM(newCandidates, projectContext, technologies);
@@ -361,20 +441,164 @@ export async function searchSkills(
 
   onStatus?.('Fetching skill content...');
   const contentMap = new Map<string, string>();
-  await Promise.all(results.map(async (rec) => {
-    const content = await fetchSkillContent(rec);
-    if (content) contentMap.set(rec.slug, content);
-  }));
+  await Promise.all(
+    results.map(async (rec) => {
+      const content = await fetchSkillContent(rec);
+      if (content) contentMap.set(rec.slug, content);
+    }),
+  );
 
-  const available = results.filter(r => contentMap.has(r.slug));
+  const available = results.filter((r) => contentMap.has(r.slug));
   return { results: available, contentMap };
 }
 
 export { interactiveSelect as selectSkills, installSkills };
 
+// --- Query-based search (for agent/CLI use) ---
+
+export async function querySkills(query: string): Promise<void> {
+  const terms = query.split(/[\s,]+/).filter(Boolean);
+  if (terms.length === 0) {
+    console.log(chalk.yellow('Please provide search terms.'));
+    throw new Error('__exit__');
+  }
+
+  const platforms = detectLocalPlatforms();
+  const installedSkills = getInstalledSkills(platforms);
+  const primaryPlatform = platforms.includes('claude') ? 'claude' : platforms[0];
+
+  const searchSpinner = ora('Searching skill registries...').start();
+  const allCandidates = await searchAllProviders(terms, primaryPlatform);
+
+  if (!allCandidates.length) {
+    searchSpinner.succeed('No skills found matching your query.');
+    return;
+  }
+
+  const newCandidates = allCandidates.filter((c) => !installedSkills.has(c.slug.toLowerCase()));
+  if (!newCandidates.length) {
+    searchSpinner.succeed('All matching skills are already installed.');
+    return;
+  }
+  searchSpinner.succeed(`Found ${newCandidates.length} candidates`);
+
+  let results: SkillResult[];
+  const config = loadConfig();
+
+  if (config) {
+    const scoreSpinner = ora('Scoring relevance...').start();
+    try {
+      const queryContext = `User is looking for skills related to: ${query}`;
+      results = await scoreWithLLM(newCandidates, queryContext, terms);
+      if (results.length === 0) {
+        scoreSpinner.succeed('No highly relevant skills found.');
+        return;
+      }
+      scoreSpinner.succeed(`${results.length} relevant`);
+    } catch {
+      results = newCandidates.slice(0, 5);
+    }
+  } else {
+    results = newCandidates.slice(0, 5);
+  }
+
+  const top = results.slice(0, 5);
+
+  // Verify content is available
+  const fetchSpinner = ora('Verifying availability...').start();
+  const contentMap = new Map<string, string>();
+  await Promise.all(
+    top.map(async (rec) => {
+      const content = await fetchSkillContent(rec);
+      if (content) contentMap.set(rec.slug, content);
+    }),
+  );
+  const available = top.filter((r) => contentMap.has(r.slug));
+  fetchSpinner.succeed(`${available.length} available`);
+
+  if (!available.length) {
+    console.log(chalk.dim('  No installable skills found.\n'));
+    return;
+  }
+
+  // Output structured results for agent consumption
+  console.log('');
+  for (let i = 0; i < available.length; i++) {
+    const r = available[i];
+    const scoreStr = r.score > 0 ? ` (score: ${r.score})` : '';
+    console.log(`  ${i + 1}. ${r.slug}${scoreStr}`);
+    console.log(`     ${r.reason || r.name}`);
+  }
+  console.log('');
+  console.log(
+    chalk.dim(
+      `  Install with: ${resolveCaliber()} skills --install ${available.map((r) => r.slug).join(',')}`,
+    ),
+  );
+  console.log('');
+}
+
+// --- Install by slug (non-interactive) ---
+
+export async function installBySlug(slugStr: string): Promise<void> {
+  const slugs = slugStr
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (slugs.length === 0) {
+    console.log(chalk.yellow('Please provide skill slugs to install.'));
+    throw new Error('__exit__');
+  }
+
+  const platforms = detectLocalPlatforms();
+
+  const spinner = ora(`Fetching ${slugs.length} skill${slugs.length > 1 ? 's' : ''}...`).start();
+
+  // Search for each slug to get source URLs
+  const allResults = await searchAllProviders(slugs);
+  const matched: SkillResult[] = [];
+  for (const slug of slugs) {
+    const match = allResults.find((r) => r.slug.toLowerCase() === slug.toLowerCase());
+    if (match) matched.push(match);
+  }
+
+  if (!matched.length) {
+    spinner.fail('No matching skills found in the registry.');
+    return;
+  }
+
+  // Fetch content
+  const contentMap = new Map<string, string>();
+  await Promise.all(
+    matched.map(async (rec) => {
+      const content = await fetchSkillContent(rec);
+      if (content) contentMap.set(rec.slug, content);
+    }),
+  );
+
+  const installable = matched.filter((r) => contentMap.has(r.slug));
+  if (!installable.length) {
+    spinner.fail('Could not fetch skill content.');
+    return;
+  }
+
+  spinner.succeed(`Fetched ${installable.length} skill${installable.length > 1 ? 's' : ''}`);
+  await installSkills(installable, platforms, contentMap);
+}
+
 // --- Main command ---
 
-export async function recommendCommand() {
+export async function recommendCommand(options: { query?: string; install?: string }) {
+  if (options.install) {
+    await installBySlug(options.install);
+    return;
+  }
+
+  if (options.query) {
+    await querySkills(options.query);
+    return;
+  }
+
   const proceed = await select({
     message: 'Search public repos for relevant skills to add to this project?',
     choices: [
@@ -398,14 +622,18 @@ export async function searchAndInstallSkills(targetPlatforms?: Platform[]): Prom
   const platforms = targetPlatforms ?? detectLocalPlatforms();
   const installedSkills = getInstalledSkills(platforms);
 
-  const technologies = [...new Set([
-    ...fingerprint.languages,
-    ...fingerprint.frameworks,
-    ...extractTopDeps(),
-  ].filter(Boolean))];
+  const technologies = [
+    ...new Set(
+      [...fingerprint.languages, ...fingerprint.frameworks, ...extractTopDeps()].filter(Boolean),
+    ),
+  ];
 
   if (technologies.length === 0) {
-    console.log(chalk.yellow('Could not detect any languages or dependencies. Try running from a project root.'));
+    console.log(
+      chalk.yellow(
+        'Could not detect any languages or dependencies. Try running from a project root.',
+      ),
+    );
     throw new Error('__exit__');
   }
 
@@ -421,7 +649,7 @@ export async function searchAndInstallSkills(targetPlatforms?: Platform[]): Prom
   }
 
   // Step 2: Filter out already-installed skills
-  const newCandidates = allCandidates.filter(c => !installedSkills.has(c.slug.toLowerCase()));
+  const newCandidates = allCandidates.filter((c) => !installedSkills.has(c.slug.toLowerCase()));
   const filteredCount = allCandidates.length - newCandidates.length;
 
   if (!newCandidates.length) {
@@ -431,7 +659,7 @@ export async function searchAndInstallSkills(targetPlatforms?: Platform[]): Prom
 
   searchSpinner.succeed(
     `Found ${allCandidates.length} skills` +
-    (filteredCount > 0 ? chalk.dim(` (${filteredCount} already installed)`) : '')
+      (filteredCount > 0 ? chalk.dim(` (${filteredCount} already installed)`) : ''),
   );
 
   // Step 3: LLM relevance scoring (if provider configured)
@@ -447,7 +675,9 @@ export async function searchAndInstallSkills(targetPlatforms?: Platform[]): Prom
         scoreSpinner.succeed('No highly relevant skills found for your specific project.');
         return;
       }
-      scoreSpinner.succeed(`${results.length} relevant skill${results.length > 1 ? 's' : ''} for your project`);
+      scoreSpinner.succeed(
+        `${results.length} relevant skill${results.length > 1 ? 's' : ''} for your project`,
+      );
     } catch {
       scoreSpinner.warn('Could not score relevance — showing top results');
       results = newCandidates.slice(0, 20);
@@ -459,12 +689,14 @@ export async function searchAndInstallSkills(targetPlatforms?: Platform[]): Prom
   // Step 4: Pre-fetch content — only show skills that are actually installable
   const fetchSpinner = ora('Verifying skill availability...').start();
   const contentMap = new Map<string, string>();
-  await Promise.all(results.map(async (rec) => {
-    const content = await fetchSkillContent(rec);
-    if (content) contentMap.set(rec.slug, content);
-  }));
+  await Promise.all(
+    results.map(async (rec) => {
+      const content = await fetchSkillContent(rec);
+      if (content) contentMap.set(rec.slug, content);
+    }),
+  );
 
-  const available = results.filter(r => contentMap.has(r.slug));
+  const available = results.filter((r) => contentMap.has(r.slug));
   if (!available.length) {
     fetchSpinner.fail('No installable skills found — content could not be fetched.');
     return;
@@ -472,7 +704,7 @@ export async function searchAndInstallSkills(targetPlatforms?: Platform[]): Prom
   const unavailableCount = results.length - available.length;
   fetchSpinner.succeed(
     `${available.length} installable skill${available.length > 1 ? 's' : ''}` +
-    (unavailableCount > 0 ? chalk.dim(` (${unavailableCount} unavailable)`) : '')
+      (unavailableCount > 0 ? chalk.dim(` (${unavailableCount} unavailable)`) : ''),
   );
 
   const selected = await interactiveSelect(available);
@@ -493,12 +725,12 @@ async function interactiveSelect(recs: SkillResult[]): Promise<SkillResult[] | n
   let cursor = 0;
   const { stdin, stdout } = process;
   let lineCount = 0;
-  const hasScores = recs.some(r => r.score > 0);
+  const hasScores = recs.some((r) => r.score > 0);
 
   function render(): string {
     const lines: string[] = [];
     const cols = process.stdout.columns || 80;
-    const nameWidth = Math.max(...recs.map(r => r.name.length), 4) + 2;
+    const nameWidth = Math.max(...recs.map((r) => r.name.length), 4) + 2;
     // prefix: "  > [x] " = 8 chars; score col: "100   " = 6 chars
     const prefixWidth = 8;
     const scoreWidth = 6;
@@ -507,10 +739,18 @@ async function interactiveSelect(recs: SkillResult[]): Promise<SkillResult[] | n
     lines.push('');
 
     if (hasScores) {
-      const header = ' '.repeat(prefixWidth) + chalk.dim('Score'.padEnd(scoreWidth)) + chalk.dim('Name'.padEnd(nameWidth)) + chalk.dim('Why');
+      const header =
+        ' '.repeat(prefixWidth) +
+        chalk.dim('Score'.padEnd(scoreWidth)) +
+        chalk.dim('Name'.padEnd(nameWidth)) +
+        chalk.dim('Why');
       lines.push(header);
     } else {
-      const header = ' '.repeat(prefixWidth) + chalk.dim('Name'.padEnd(nameWidth)) + chalk.dim('Technology'.padEnd(18)) + chalk.dim('Source');
+      const header =
+        ' '.repeat(prefixWidth) +
+        chalk.dim('Name'.padEnd(nameWidth)) +
+        chalk.dim('Technology'.padEnd(18)) +
+        chalk.dim('Source');
       lines.push(header);
     }
     lines.push(chalk.dim('  ' + '─'.repeat(Math.min(cols - 4, 90))));
@@ -521,11 +761,16 @@ async function interactiveSelect(recs: SkillResult[]): Promise<SkillResult[] | n
       const ptr = i === cursor ? chalk.cyan('>') : ' ';
 
       if (hasScores) {
-        const scoreColor = rec.score >= 90 ? chalk.green : rec.score >= 70 ? chalk.yellow : chalk.dim;
+        const scoreColor =
+          rec.score >= 90 ? chalk.green : rec.score >= 70 ? chalk.yellow : chalk.dim;
         const reasonMax = Math.max(cols - prefixWidth - scoreWidth - nameWidth - 2, 20);
-        lines.push(`  ${ptr} ${check} ${scoreColor(String(rec.score).padStart(3))}   ${rec.name.padEnd(nameWidth)}${chalk.dim(rec.reason.slice(0, reasonMax))}`);
+        lines.push(
+          `  ${ptr} ${check} ${scoreColor(String(rec.score).padStart(3))}   ${rec.name.padEnd(nameWidth)}${chalk.dim(rec.reason.slice(0, reasonMax))}`,
+        );
       } else {
-        lines.push(`  ${ptr} ${check} ${rec.name.padEnd(nameWidth)}${rec.detected_technology.padEnd(16)} ${chalk.dim(rec.source_url || '')}`);
+        lines.push(
+          `  ${ptr} ${check} ${rec.name.padEnd(nameWidth)}${rec.detected_technology.padEnd(16)} ${chalk.dim(rec.source_url || '')}`,
+        );
       }
     }
 
@@ -587,7 +832,11 @@ async function interactiveSelect(recs: SkillResult[]): Promise<SkillResult[] | n
             console.log(chalk.dim('\n  No skills selected.\n'));
             resolve(null);
           } else {
-            resolve(Array.from(selected).sort().map(i => recs[i]));
+            resolve(
+              Array.from(selected)
+                .sort()
+                .map((i) => recs[i]),
+            );
           }
           break;
         case 'q':
@@ -633,7 +882,11 @@ async function fetchSkillContent(rec: SkillResult): Promise<string | null> {
   return null;
 }
 
-async function installSkills(recs: SkillResult[], platforms: Platform[], contentMap: Map<string, string>): Promise<void> {
+async function installSkills(
+  recs: SkillResult[],
+  platforms: Platform[],
+  contentMap: Map<string, string>,
+): Promise<void> {
   const spinner = ora(`Installing ${recs.length} skill${recs.length > 1 ? 's' : ''}...`).start();
   const installed: string[] = [];
 
@@ -664,27 +917,41 @@ async function installSkills(recs: SkillResult[], platforms: Platform[], content
 }
 
 function printSkills(recs: SkillResult[]) {
-  const hasScores = recs.some(r => r.score > 0);
+  const hasScores = recs.some((r) => r.score > 0);
   const cols = process.stdout.columns || 80;
-  const nameWidth = Math.max(...recs.map(r => r.name.length), 4) + 2;
+  const nameWidth = Math.max(...recs.map((r) => r.name.length), 4) + 2;
   const scoreWidth = 6;
   const prefixWidth = 2;
 
   console.log(chalk.bold('\n  Skills\n'));
 
   if (hasScores) {
-    console.log(' '.repeat(prefixWidth) + chalk.dim('Score'.padEnd(scoreWidth)) + chalk.dim('Name'.padEnd(nameWidth)) + chalk.dim('Why'));
+    console.log(
+      ' '.repeat(prefixWidth) +
+        chalk.dim('Score'.padEnd(scoreWidth)) +
+        chalk.dim('Name'.padEnd(nameWidth)) +
+        chalk.dim('Why'),
+    );
   } else {
-    console.log(' '.repeat(prefixWidth) + chalk.dim('Name'.padEnd(nameWidth)) + chalk.dim('Technology'.padEnd(18)) + chalk.dim('Source'));
+    console.log(
+      ' '.repeat(prefixWidth) +
+        chalk.dim('Name'.padEnd(nameWidth)) +
+        chalk.dim('Technology'.padEnd(18)) +
+        chalk.dim('Source'),
+    );
   }
   console.log(chalk.dim('  ' + '─'.repeat(Math.min(cols - 4, 90))));
 
   for (const rec of recs) {
     if (hasScores) {
       const reasonMax = Math.max(cols - prefixWidth - scoreWidth - nameWidth - 2, 20);
-      console.log(`  ${String(rec.score).padStart(3)}   ${rec.name.padEnd(nameWidth)}${chalk.dim(rec.reason.slice(0, reasonMax))}`);
+      console.log(
+        `  ${String(rec.score).padStart(3)}   ${rec.name.padEnd(nameWidth)}${chalk.dim(rec.reason.slice(0, reasonMax))}`,
+      );
     } else {
-      console.log(`  ${rec.name.padEnd(nameWidth)}${rec.detected_technology.padEnd(16)} ${chalk.dim(rec.source_url || '')}`);
+      console.log(
+        `  ${rec.name.padEnd(nameWidth)}${rec.detected_technology.padEnd(16)} ${chalk.dim(rec.source_url || '')}`,
+      );
     }
   }
   console.log('');

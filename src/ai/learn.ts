@@ -69,11 +69,27 @@ function trimEventsToFit(events: SessionEvent[], maxTokens: number): SessionEven
   return kept.slice(-50);
 }
 
+function normalizeAnalysisResult(parsed: Record<string, unknown>): AnalysisResult {
+  let section = parsed.claudeMdLearnedSection ?? null;
+  if (Array.isArray(section)) {
+    section = section.join('\n');
+  }
+  if (section !== null && typeof section !== 'string') {
+    section = String(section);
+  }
+  return {
+    ...parsed,
+    claudeMdLearnedSection: section as string | null,
+    skills: (parsed.skills as AnalysisResult['skills']) ?? null,
+    explanations: (parsed.explanations as string[]) ?? [],
+  };
+}
+
 function parseAnalysisResponse(raw: string): AnalysisResult {
   const cleaned = stripMarkdownFences(raw);
 
   try {
-    return JSON.parse(cleaned);
+    return normalizeAnalysisResult(JSON.parse(cleaned));
   } catch {
     // Fall through to bracket extraction
   }
@@ -84,7 +100,7 @@ function parseAnalysisResponse(raw: string): AnalysisResult {
   }
 
   try {
-    return JSON.parse(json);
+    return normalizeAnalysisResult(JSON.parse(json));
   } catch {
     return { claudeMdLearnedSection: null, skills: null, explanations: ['LLM response contained invalid JSON.'] };
   }
@@ -95,6 +111,7 @@ export async function analyzeEvents(
   existingClaudeMd?: string,
   existingLearnedSection?: string | null,
   existingSkills?: Array<{ filename: string; content: string }>,
+  personalLearnings?: string | null,
 ): Promise<AnalysisResult> {
   const fittedEvents = trimEventsToFit(events, MAX_PROMPT_TOKENS - 10_000);
   const eventsText = formatEventsForPrompt(fittedEvents);
@@ -112,6 +129,10 @@ export async function analyzeEvents(
   if (existingSkills?.length) {
     const skillsSummary = existingSkills.map(s => `- ${s.filename}: ${s.content.slice(0, 200)}`).join('\n');
     contextParts.push(`## Existing Skills\n\n${skillsSummary}`);
+  }
+
+  if (personalLearnings) {
+    contextParts.push(`## Personal Learnings (developer-specific, do NOT duplicate these)\n\n${personalLearnings}`);
   }
 
   contextParts.push(`## Task Segmentation & Attribution Instructions
