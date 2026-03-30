@@ -1,3 +1,9 @@
+## v1.37.1 (2026-03-30)
+
+### Bug Fixes
+
+- reduce wasteful LLM calls in init flow (#108)
+
 ## v1.37.0 (2026-03-30)
 
 ### Features
