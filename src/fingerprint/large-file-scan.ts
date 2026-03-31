@@ -7,18 +7,19 @@
  * scanners (e.g. scanLocalState).
  *
  * Design (per reviewer feedback):
- *  - Size-only heuristic: no extension lists.  A 50 MB .json is just as
- *    problematic as a 50 MB .csv.
- *  - Fully recursive walk that mirrors the IGNORE_DIRS convention used
- *    in src/fingerprint/file-tree.ts.
- *  - Injected statSync / readdirSync so the function is testable with
- *    in-memory stubs — no tmp dirs, no disk I/O in tests.
- *  - Errors are categorised: permission issues are skipped silently;
- *    unexpected errors are re-thrown so bugs surface immediately.
+ * - Size-only heuristic: no extension lists.  A 50 MB .json is just as
+ * problematic as a 50 MB .csv.
+ * - Fully recursive walk that mirrors the IGNORE_DIRS convention used
+ * in src/fingerprint/file-tree.ts.
+ * - Injected statSync / readdirSync so the function is testable with
+ * in-memory stubs — no tmp dirs, no disk I/O in tests.
+ * - Errors are categorised: permission issues are skipped silently;
+ * unexpected errors are re-thrown so bugs surface immediately.
  */
 
 import fs from 'fs';
 import path from 'path';
+import { IGNORE_DIRS } from './file-tree.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,11 +73,7 @@ export const DEFAULT_THRESHOLD_BYTES = 1_048_576;
  * Directories that are never walked, consistent with file-tree.ts.
  * Exported so callers can extend the set without duplicating it.
  */
-export const DEFAULT_IGNORE_DIRS: ReadonlySet<string> = new Set([
-  'node_modules', '.git', '.next', 'dist', 'build', '.cache',
-  '.turbo', 'coverage', '.caliber', '__pycache__', '.venv',
-  'vendor', 'target',
-]);
+export const DEFAULT_IGNORE_DIRS: ReadonlySet<string> = IGNORE_DIRS;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -151,4 +148,3 @@ function walkDir(
     }
   }
 }
-
