@@ -1,3 +1,9 @@
+## v1.40.0 (2026-04-02)
+
+### Features
+
+- add recursive large-file scanner for AI context bloat warning (#96)
+
 ## v1.39.0 (2026-03-31)
 
 ### Features
