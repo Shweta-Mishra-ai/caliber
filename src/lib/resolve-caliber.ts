@@ -3,6 +3,9 @@ import { execSync } from 'child_process';
 
 let _resolved: string | null = null;
 
+const WINDOWS_EXEC_EXT = /\.(cmd|exe|bat)$/i;
+const NPX_RESOLUTION_RE = /[\\/]npx(?:\.(?:cmd|exe|bat))? --yes @rely-ai\/caliber$/i;
+
 /**
  * Pick the best executable from `where`/`which` output.
  *
@@ -16,7 +19,7 @@ export function pickExecutable(out: string): string {
     .map((l) => l.trim())
     .filter(Boolean);
   if (process.platform === 'win32') {
-    return lines.find((l) => /\.(cmd|exe|bat)$/i.test(l)) ?? lines[0] ?? '';
+    return lines.find((l) => WINDOWS_EXEC_EXT.test(l)) ?? lines[0] ?? '';
   }
   return lines[0] ?? '';
 }
@@ -105,7 +108,7 @@ export function isNpxResolution(): boolean {
   const r = resolveCaliber();
   if (r === 'npx --yes @rely-ai/caliber') return true;
   // Match absolute paths on POSIX (/npx) and Windows (\npx, \npx.cmd, \npx.exe)
-  return /[\\/]npx(?:\.(?:cmd|exe|bat))? --yes @rely-ai\/caliber$/i.test(r);
+  return NPX_RESOLUTION_RE.test(r);
 }
 
 /** Reset cached resolution — only for tests. */
