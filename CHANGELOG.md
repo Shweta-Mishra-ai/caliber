@@ -1,3 +1,14 @@
+## v1.45.2 (2026-04-16)
+
+### Bug Fixes
+
+- quote exe path on Windows when using shell:true
+- incremental learn finalize spawn fails on Windows (#166)
+
+### Refactoring
+
+- hoist regex literals + share extension list constant
+
 ## v1.45.1 (2026-04-16)
 
 ### Bug Fixes
