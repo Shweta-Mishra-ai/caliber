@@ -9,6 +9,17 @@ import type {
 } from './types.js';
 import { trackUsage } from './usage.js';
 
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+
+function resolveTimeoutMs(): number {
+  const raw = process.env.CALIBER_OPENAI_TIMEOUT_MS;
+  if (raw) {
+    const parsed = parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 1000) return parsed;
+  }
+  return DEFAULT_TIMEOUT_MS;
+}
+
 export class OpenAICompatProvider implements LLMProvider {
   protected client: OpenAI;
   protected defaultModel: string;
@@ -18,6 +29,7 @@ export class OpenAICompatProvider implements LLMProvider {
     this.client = new OpenAI({
       apiKey: config.apiKey,
       ...(config.baseUrl && { baseURL: config.baseUrl }),
+      timeout: resolveTimeoutMs(),
     });
     this.defaultModel = config.model;
     this.temperature = options?.temperature;
