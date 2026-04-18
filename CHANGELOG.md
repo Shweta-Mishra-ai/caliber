@@ -1,3 +1,9 @@
+## v1.46.0 (2026-04-18)
+
+### Features
+
+- **llm**: configurable OpenAI SDK per-request timeout via CALIBER_OPENAI_TIMEOUT_MS (#175)
+
 ## v1.45.4 (2026-04-17)
 
 ### Bug Fixes
