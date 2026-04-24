@@ -1,3 +1,11 @@
+## v1.46.1 (2026-04-24)
+
+### Bug Fixes
+
+- clarify Copilot is a sync target in onboarding UX (#187)
+- document valid CLI flags in managed blocks (#186)
+- sync divergent skill files across platforms (#185)
+
 ## v1.46.0 (2026-04-18)
 
 ### Features
