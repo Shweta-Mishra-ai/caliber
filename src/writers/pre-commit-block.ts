@@ -42,6 +42,10 @@ grep -q "caliber" .git/hooks/pre-commit 2>/dev/null && echo "hook-active" || ech
   2. Run: \`${bin} refresh && git add ${MANAGED_DOC_PATHS} 2>/dev/null\`
   3. After it completes, briefly tell the user what Caliber updated. Then proceed with the commit.
 
+**Valid \`${bin} refresh\` options:** \`--quiet\` (suppress output) and \`--dry-run\` (preview without writing). Do not pass any other flags — options like \`--auto-approve\`, \`--debug\`, or \`--force\` do not exist and will cause errors.
+
+**\`${bin} config\`** takes no flags — it runs an interactive provider setup. Do not pass \`--provider\`, \`--api-key\`, or \`--endpoint\`.
+
 ${getCaliberNotFoundFallback(platform, bin)}
 ${BLOCK_END}`;
 }
@@ -59,6 +63,9 @@ Run: \`grep -q "caliber" .git/hooks/pre-commit 2>/dev/null && echo "hook-active"
 
 If hook-active: just commit normally — Caliber syncs automatically via the hook. Tell the user: "Caliber will sync your agent configs automatically."
 If no-hook: run \`${bin} refresh && git add ${MANAGED_DOC_PATHS} 2>/dev/null\` before committing, and tell the user what was updated.
+
+Valid \`${bin} refresh\` options: \`--quiet\` and \`--dry-run\` only. Do not pass \`--auto-approve\`, \`--debug\`, \`--force\`, or any other flags.
+\`${bin} config\` takes no flags — it is interactive. Do not pass \`--provider\`, \`--api-key\`, or \`--endpoint\`.
 
 If \`${bin}\` is not found, read the setup-caliber skill from .cursor/skills/setup-caliber/SKILL.md and follow its instructions to install Caliber.
 `;
